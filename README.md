@@ -113,7 +113,7 @@ According to rule 2.3.1, you **MUST**:
 
 3. **Run the installation script:**
    ```powershell
-   .\install.bat
+   .\scripts\install.bat
    ```
    
    This will:
@@ -131,13 +131,13 @@ According to rule 2.3.1, you **MUST**:
 ### Step 2: Prepare Detection Images
 
 **📦 INCLUDED:** Example detection images are already provided in this repository!
-- `image/` folder contains all detection images:
-  - `image/point.png` - Fishing bite indicator (REQUIRED)
-  - `image/fish.png` - Regular fish caught indicator
-  - `image/junk.png` - Junk caught indicator
-  - `image/treasure.png` - Treasure caught indicator
-  - `image/sunken.png` - Sunken item caught indicator
-- `hunger.png` - Example hunger bar indicator (root folder - optional)
+- `assets/images/detection/` folder contains all detection images:
+  - `point.png` - Fishing bite indicator (REQUIRED)
+  - `fish.png` - Regular fish caught indicator
+  - `junk.png` - Junk caught indicator
+  - `treasure.png` - Treasure caught indicator
+  - `sunken.png` - Sunken item caught indicator
+  - `hunger.png` - Hunger bar indicator (optional)
 
 **⚠️ IMPORTANT:** These are example images and may not work perfectly for your game resolution or settings. You may need to create your own screenshots for best results.
 
@@ -145,23 +145,23 @@ According to rule 2.3.1, you **MUST**:
 
 #### Required Images:
 
-1. **`image/point.png`** - The fishing bite indicator
+1. **`assets/images/detection/point.png`** - The fishing bite indicator
    - When a fish bites, a small indicator appears on screen
    - Take a screenshot of JUST that indicator
-   - Save it as `image/point.png` in the project folder (replace existing)
+   - Save it as `assets/images/detection/point.png` in the project folder (replace existing)
    - **This is REQUIRED** for the macro to work
 
 #### Optional Images:
 
-2. **`hunger.png`** - Low hunger bar indicator (OPTIONAL)
+2. **`assets/images/detection/hunger.png`** - Low hunger bar indicator (OPTIONAL)
    - ⚠️ **NOTE:** Random eating is now enabled by default (every 60-120 seconds)
    - This image is no longer required unless you want hunger-based eating
    - Take a screenshot of your hunger bar when it's at ≤35%
-   - Save it as `hunger.png` in the project folder (replace existing)
+   - Save it as `assets/images/detection/hunger.png` in the project folder (replace existing)
 
 3. **Caught indicators** - Fish/treasure/junk caught indicators (OPTIONAL)
    - Screenshot of the "fish caught" message or visual indicators
-   - Save in `image/` folder (e.g., `image/fish.png`, `image/treasure.png`)
+   - Save in `assets/images/detection/` folder (e.g., `fish.png`, `treasure.png`)
    - Helps detect when fish is caught
    - Macro will work without this (uses timeout instead)
 
@@ -175,17 +175,31 @@ According to rule 2.3.1, you **MUST**:
 **Example file structure:**
 ```
 roblox-arcane-odyssey-macro-fishing/
-├── background_fishing_macro.py
-├── hunger.png             ← PROVIDED (example - optional)
-├── image/                 ← FOLDER with all detection images
-│   ├── point.png          ← Fishing bite indicator (REQUIRED)
-│   ├── fish.png           ← Fish caught indicator
-│   ├── junk.png           ← Junk caught indicator
-│   ├── treasure.png       ← Treasure caught indicator
-│   └── sunken.png         ← Sunken item caught indicator
+├── background_fishing_macro.py    ← Main script
 ├── requirements.txt
-├── install.bat
-└── README.md
+├── README.md
+├── assets/                         ← All assets organized here
+│   ├── images/
+│   │   └── detection/              ← Detection images
+│   │       ├── point.png           ← Fishing bite indicator (REQUIRED)
+│   │       ├── fish.png            ← Fish caught indicator
+│   │       ├── junk.png            ← Junk caught indicator
+│   │       ├── treasure.png        ← Treasure caught indicator
+│   │       ├── sunken.png          ← Sunken item caught indicator
+│   │       └── hunger.png          ← Hunger bar indicator (optional)
+│   └── screenshots/                ← Documentation screenshots
+│       ├── ingame_ban_table.png
+│       └── macroing_rule.png
+├── docs/                           ← Documentation files
+│   ├── ANSWER_BACKGROUND_INPUT.md
+│   ├── INPUT_METHODS_REFERENCE.md
+│   └── VALIDATION_RESULTS.md
+├── scripts/                        ← Installation and utility scripts
+│   └── install.bat
+└── tests/                          ← Test files
+    ├── test_all_input_methods.py
+    ├── visual_input_test.py
+    └── background_input_examples.py
 ```
 
 ### Step 3: In-Game Setup
@@ -328,7 +342,7 @@ Edit these in `background_fishing_macro.py`:
 
 ```python
 # Detection confidence (0.0 - 1.0)
-point_detector = ImageDetector('image/point.png', confidence=0.55)
+point_detector = ImageDetector('assets/images/detection/point.png', confidence=0.55)
 
 # Auto-cast timeout (seconds)
 no_detection_timeout = 70
@@ -344,12 +358,12 @@ next_eat_interval = random.randint(60, 120)  # Random between 1-2 minutes
 # First 150 clicks: 0.012s delay = ~83 clicks/second
 # After 150 clicks: 0.015s delay = ~66 clicks/second
 
-# Caught detection images (in image/ folder)
+# Caught detection images (in assets/images/detection/ folder)
 caught_images = [
-    ('image/fish.png', 0.35),      # Regular fish caught indicator
-    ('image/treasure.png', 0.35),  # Treasure chest caught indicator
-    ('image/sunken.png', 0.35),    # Sunken item caught indicator
-    ('image/junk.png', 0.35),      # Junk caught indicator
+    ('assets/images/detection/fish.png', 0.35),      # Regular fish caught indicator
+    ('assets/images/detection/treasure.png', 0.35),  # Treasure chest caught indicator
+    ('assets/images/detection/sunken.png', 0.35),    # Sunken item caught indicator
+    ('assets/images/detection/junk.png', 0.35),      # Junk caught indicator
 ]
 
 # Maximum clicking duration with safety timeouts
@@ -398,11 +412,11 @@ The macro will:
 - Check window title is exactly "Roblox"
 - Try running in-game (not in menu)
 
-#### "Template image not found: image/point.png"
+#### "Template image not found: assets/images/detection/point.png"
 **Problem:** Missing required screenshot
 **Solutions:**
-- Create `image/point.png` screenshot of fishing bite indicator
-- Place in the `image/` folder
+- Create `assets/images/detection/point.png` screenshot of fishing bite indicator
+- Place in the `assets/images/detection/` folder
 - Check filename is exact (case-sensitive)
 
 #### "Failed to capture window"
@@ -431,7 +445,7 @@ The macro will:
 **Problem:** Macro doesn't detect fishing indicator
 **Solutions:**
 - Lower confidence: `confidence=0.4` instead of `0.55`
-- Retake `image/point.png` at current resolution
+- Retake `assets/images/detection/point.png` at current resolution
 - Enable debug mode to see detection confidence
 - Make sure fish are actually biting
 
@@ -458,14 +472,14 @@ Debug output shows:
 
 ### Multiple Detection Images
 
-The macro supports multiple "caught" indicators. Example images are provided in the `image/` folder:
+The macro supports multiple "caught" indicators. Example images are provided in the `assets/images/detection/` folder:
 
 ```python
 caught_images = [
-    ('image/fish.png', 0.35),      # Regular fish caught
-    ('image/treasure.png', 0.35),   # Treasure chest caught
-    ('image/sunken.png', 0.35),     # Sunken item caught
-    ('image/junk.png', 0.35),       # Junk caught
+    ('assets/images/detection/fish.png', 0.35),      # Regular fish caught
+    ('assets/images/detection/treasure.png', 0.35),  # Treasure chest caught
+    ('assets/images/detection/sunken.png', 0.35),    # Sunken item caught
+    ('assets/images/detection/junk.png', 0.35),      # Junk caught
 ]
 ```
 
@@ -569,11 +583,12 @@ See `INPUT_METHODS_REFERENCE.md` for full technical analysis.
 
 ## 📚 Additional Documentation
 
-- **`INPUT_METHODS_REFERENCE.md`** - Complete guide to all Windows input methods
-- **`ANSWER_BACKGROUND_INPUT.md`** - Why true background input is impossible
-- **`test_all_input_methods.py`** - Test script for all 11 input methods
-- **`visual_input_test.py`** - Visual validation of which methods work
-- **`background_input_examples.py`** - Working examples for other apps
+- **`docs/INPUT_METHODS_REFERENCE.md`** - Complete guide to all Windows input methods
+- **`docs/ANSWER_BACKGROUND_INPUT.md`** - Why true background input is impossible
+- **`docs/VALIDATION_RESULTS.md`** - Validation results and testing
+- **`tests/test_all_input_methods.py`** - Test script for all 11 input methods
+- **`tests/visual_input_test.py`** - Visual validation of which methods work
+- **`tests/background_input_examples.py`** - Working examples for other apps
 
 ---
 
