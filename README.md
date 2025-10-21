@@ -11,9 +11,10 @@ A sophisticated fishing automation script for Roblox Arcane Odyssey that works e
 What this means:
 - 🧑‍💻 **Human role:** Prompting and describing how the program should work
 - 🤖 **AI role:** Writing 100% of the actual code implementation
+- 📄 **Documentation:** Even this README.md is AI-generated through prompting
 - 🎯 **Result:** Educational demonstration of AI-assisted development
 
-This is a pure AI coding experiment - all code, logic, and implementation decisions were made by AI based on natural language descriptions of desired functionality.
+**USE WITH CAUTION:** This is a pure AI coding experiment - all code, logic, implementation decisions, AND documentation were created by AI based on natural language descriptions. The AI may have made assumptions or errors. Always review and test before use.
 
 ---
 
@@ -620,8 +621,9 @@ By using this software, you acknowledge that:
 
 **🤖 100% AI Generated Project**
 - Created entirely through AI-assisted development (GitHub Copilot)
-- Human provided: Requirements, feature descriptions, and testing
-- AI provided: All code implementation, logic, and technical decisions
+- Human provided: Requirements, feature descriptions, and testing feedback
+- AI provided: All code implementation, logic, technical decisions, AND this documentation
+- **⚠️ Documentation Warning:** This README.md itself is AI-generated and may contain assumptions or errors
 - Purpose: Educational demonstration of AI coding capabilities
 
 **Technical Demonstrations:**
