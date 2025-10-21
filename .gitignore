@@ -37,12 +37,5 @@ env/
 .DS_Store
 Thumbs.db
 
-# Detection Images (user-specific)
-point.png
-hunger.png
-caught.png
-fish_caught.png
-treasure_caught.png
-
 # Logs
 *.log

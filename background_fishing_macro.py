@@ -504,7 +504,7 @@ class FishingMacro:
     
     def __init__(self, fishing_time_seconds, debug=False):
         self.window_capture = BackgroundWindowCapture("Roblox")
-        self.point_detector = ImageDetector('point.png', confidence=0.55)
+        self.point_detector = ImageDetector('image/point.png', confidence=0.55)
         
         # Hunger detection
         self.hunger_detector = ImageDetector('hunger.png', confidence=0.15, optional=True)  # Very low threshold for flexibility
@@ -521,9 +521,10 @@ class FishingMacro:
         # Try multiple caught detection images
         self.caught_detectors = []
         caught_images = [
-            ('caught.png', 0.35),  # Balanced confidence to avoid false positives
-            ('fish_caught.png', 0.35),  # Alternative image
-            ('treasure_caught.png', 0.35),  # Alternative image
+            ('image/fish.png', 0.35),      # Regular fish caught indicator
+            ('image/treasure.png', 0.35),  # Treasure chest caught indicator
+            ('image/sunken.png', 0.35),    # Sunken item caught indicator
+            ('image/junk.png', 0.35),      # Junk caught indicator
         ]
         
         for img_path, conf in caught_images:

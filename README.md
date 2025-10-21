@@ -130,14 +130,25 @@ According to rule 2.3.1, you **MUST**:
 
 ### Step 2: Prepare Detection Images
 
-You need to create screenshot images that the macro will detect:
+**📦 INCLUDED:** Example detection images are already provided in this repository!
+- `image/` folder contains all detection images:
+  - `image/point.png` - Fishing bite indicator (REQUIRED)
+  - `image/fish.png` - Regular fish caught indicator
+  - `image/junk.png` - Junk caught indicator
+  - `image/treasure.png` - Treasure caught indicator
+  - `image/sunken.png` - Sunken item caught indicator
+- `hunger.png` - Example hunger bar indicator (root folder - optional)
+
+**⚠️ IMPORTANT:** These are example images and may not work perfectly for your game resolution or settings. You may need to create your own screenshots for best results.
+
+#### How to Create Your Own Detection Images:
 
 #### Required Images:
 
-1. **`point.png`** - The fishing bite indicator
+1. **`image/point.png`** - The fishing bite indicator
    - When a fish bites, a small indicator appears on screen
    - Take a screenshot of JUST that indicator
-   - Save it as `point.png` in the project folder
+   - Save it as `image/point.png` in the project folder (replace existing)
    - **This is REQUIRED** for the macro to work
 
 #### Optional Images:
@@ -146,10 +157,11 @@ You need to create screenshot images that the macro will detect:
    - ⚠️ **NOTE:** Random eating is now enabled by default (every 60-120 seconds)
    - This image is no longer required unless you want hunger-based eating
    - Take a screenshot of your hunger bar when it's at ≤35%
-   - Save it as `hunger.png` in the project folder
+   - Save it as `hunger.png` in the project folder (replace existing)
 
-3. **`caught.png`** or **`fish_caught.png`** - Fish caught indicator (OPTIONAL)
-   - Screenshot of the "fish caught" message
+3. **Caught indicators** - Fish/treasure/junk caught indicators (OPTIONAL)
+   - Screenshot of the "fish caught" message or visual indicators
+   - Save in `image/` folder (e.g., `image/fish.png`, `image/treasure.png`)
    - Helps detect when fish is caught
    - Macro will work without this (uses timeout instead)
 
@@ -164,9 +176,13 @@ You need to create screenshot images that the macro will detect:
 ```
 roblox-arcane-odyssey-macro-fishing/
 ├── background_fishing_macro.py
-├── point.png              ← REQUIRED
-├── hunger.png             ← OPTIONAL (not used with random eating)
-├── caught.png             ← OPTIONAL
+├── hunger.png             ← PROVIDED (example - optional)
+├── image/                 ← FOLDER with all detection images
+│   ├── point.png          ← Fishing bite indicator (REQUIRED)
+│   ├── fish.png           ← Fish caught indicator
+│   ├── junk.png           ← Junk caught indicator
+│   ├── treasure.png       ← Treasure caught indicator
+│   └── sunken.png         ← Sunken item caught indicator
 ├── requirements.txt
 ├── install.bat
 └── README.md
@@ -312,7 +328,7 @@ Edit these in `background_fishing_macro.py`:
 
 ```python
 # Detection confidence (0.0 - 1.0)
-point_detector = ImageDetector('point.png', confidence=0.55)
+point_detector = ImageDetector('image/point.png', confidence=0.55)
 
 # Auto-cast timeout (seconds)
 no_detection_timeout = 70
@@ -327,6 +343,14 @@ next_eat_interval = random.randint(60, 120)  # Random between 1-2 minutes
 # Click patterns (optimized for rare/golden/massive fish)
 # First 150 clicks: 0.012s delay = ~83 clicks/second
 # After 150 clicks: 0.015s delay = ~66 clicks/second
+
+# Caught detection images (in image/ folder)
+caught_images = [
+    ('image/fish.png', 0.35),      # Regular fish caught indicator
+    ('image/treasure.png', 0.35),  # Treasure chest caught indicator
+    ('image/sunken.png', 0.35),    # Sunken item caught indicator
+    ('image/junk.png', 0.35),      # Junk caught indicator
+]
 
 # Maximum clicking duration with safety timeouts
 if click_duration > 40:   # Normal timeout (40 seconds)
@@ -374,11 +398,11 @@ The macro will:
 - Check window title is exactly "Roblox"
 - Try running in-game (not in menu)
 
-#### "Template image not found: point.png"
+#### "Template image not found: image/point.png"
 **Problem:** Missing required screenshot
 **Solutions:**
-- Create `point.png` screenshot of fishing bite indicator
-- Place in same folder as script
+- Create `image/point.png` screenshot of fishing bite indicator
+- Place in the `image/` folder
 - Check filename is exact (case-sensitive)
 
 #### "Failed to capture window"
@@ -407,7 +431,7 @@ The macro will:
 **Problem:** Macro doesn't detect fishing indicator
 **Solutions:**
 - Lower confidence: `confidence=0.4` instead of `0.55`
-- Retake `point.png` at current resolution
+- Retake `image/point.png` at current resolution
 - Enable debug mode to see detection confidence
 - Make sure fish are actually biting
 
@@ -434,19 +458,22 @@ Debug output shows:
 
 ### Multiple Detection Images
 
-The macro supports multiple "caught" indicators:
+The macro supports multiple "caught" indicators. Example images are provided in the `image/` folder:
 
 ```python
 caught_images = [
-    ('caught.png', 0.35),
-    ('fish_caught.png', 0.35),
-    ('treasure_caught.png', 0.35),
+    ('image/fish.png', 0.35),      # Regular fish caught
+    ('image/treasure.png', 0.35),   # Treasure chest caught
+    ('image/sunken.png', 0.35),     # Sunken item caught
+    ('image/junk.png', 0.35),       # Junk caught
 ]
 ```
 
-Add more images if you catch different types:
+You can add more images for different catch types:
 - Regular fish
 - Treasure chests
+- Sunken items
+- Junk items
 - Special catches
 
 ### Custom Window Title
