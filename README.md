@@ -215,6 +215,15 @@ For better detection speed, capture these the same way:
 3. Sunken item → crop and save as `sunken_arcane_odyssey.png`
 4. Junk caught → crop and save as `junk_arcane_odyssey.png`
 
+**OPTIONAL: Combat Detection (`combat_arcane_odyssey.png`)**
+
+For AFK safety and combat alerts:
+1. Get into combat or find a combat indicator screenshot
+2. Press **Print Screen** when the combat indicator is visible
+3. Crop ONLY the combat indicator from the screenshot
+4. Save as `assets/images/detection/combat_arcane_odyssey.png`
+5. Configure combat detection settings in `config.py`
+
 **Tips for best results:**
 - Always use **Print Screen** in Roblox for consistent quality
 - Use consistent resolution (don't change game window size)
@@ -290,6 +299,20 @@ For better detection speed, capture these the same way:
 - ✅ **Catch Statistics** - Shows total catches, catch breakdown by type
 - ✅ **Session Info** - Displays session duration, time since last meal, clicks
 - ✅ **Auto-cleanup** - Optionally deletes screenshots after sending to save storage
+- ✅ **@Mention Support** - Tag yourself in Discord notifications for important alerts
+- ✅ **Combat Alerts** - Sends 3 urgent @mention messages when combat detected
+
+### Combat Detection System (AFK Safety)
+- ✅ **Background Monitoring** - Continuously checks for combat indicator every 2 seconds
+- ✅ **Triple Message Spam** - Sends 3 separate @mention Discord alerts for maximum urgency
+- ✅ **Fresh Screenshots** - Captures and sends NEW screenshot with EACH of the 3 messages for real-time updates
+- ✅ **Automatic Macro Pause** - Stops fishing and eating activities when combat detected (resumes when cleared)
+- ✅ **Random WASD Movement** - Simulates human evasion during combat to avoid appearing AFK
+- ✅ **10-Second Grace Period** - Countdown timer before taking action
+- ✅ **Optional Auto-Kill** - Can automatically close Roblox process after grace period
+- ✅ **Manual Mode** - Notification-only mode without auto-kill (default)
+- ✅ **Auto-Clear Logic** - Resets timer if combat indicator disappears
+- ✅ **Independent Thread** - Runs in parallel without interfering with fishing
 
 ### Safety Features
 - ✅ **Configurable Safety Timeout** - Force-unblocks input after configured time (default: 90s)
@@ -307,6 +330,7 @@ For better detection speed, capture these the same way:
 - ✅ **Parallel Detection** - Separate thread for detection while clicking
 - ✅ **Resolution-Independent** - Works with custom screenshots at any resolution
 - ✅ **Setup Wizard** - Interactive configuration tool for first-time setup
+- ✅ **Process Management** - Can terminate Roblox process when combat detected (optional)
 
 ---
 
@@ -320,7 +344,32 @@ All settings are in `config.py`. Copy from `config.example.py` to get started.
 ```python
 DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
 ENABLE_DISCORD_NOTIFICATIONS = True
+DISCORD_MENTION_USER_ID = ""  # Your Discord User ID for @mentions
+MENTION_ON_COMBAT_DETECTED = True  # Mention you when combat detected
+MENTION_ON_AUTO_KILL = True  # Mention you when Roblox auto-killed
 ```
+
+#### Combat Detection Settings
+```python
+ENABLE_COMBAT_DETECTION = True  # Enable combat monitoring
+COMBAT_CONFIDENCE = 0.70  # Combat indicator detection threshold
+COMBAT_AUTO_KILL_ROBLOX = False  # Kill Roblox on combat (default: disabled)
+COMBAT_KILL_DELAY = 10  # Seconds before killing process
+```
+
+**How Combat Detection Works:**
+1. Background thread continuously monitors for `combat_arcane_odyssey.png`
+2. If detected: 
+   - Captures fresh screenshot #1 → Sends Discord message #1 with screenshot
+   - Captures fresh screenshot #2 → Sends Discord message #2 with screenshot  
+   - Captures fresh screenshot #3 → Sends Discord message #3 with screenshot
+   - Sets `combat_active` flag to pause fishing and eating
+   - Starts random WASD movement thread (simulates evasion)
+3. During combat: Randomly presses W/A/S/D keys (0.3-1.2s hold, 0.5-2.0s intervals)
+4. After 10-second countdown, optionally closes Roblox (if enabled)
+5. If combat clears naturally: Clears flag, resumes fishing/eating, stops movement
+
+**⚠️ SAFETY:** Auto-kill is **disabled by default** to prevent accidental game closures. Only enable if you want the macro to force-close Roblox when combat is detected.
 
 #### Detection Settings
 ```python
@@ -446,6 +495,13 @@ If the macro is:
 - Hook bypasses `BlockInput` but needs admin privileges
 - Alternative: Close PowerShell window (input will unblock)
 
+### Combat detection behavior
+- **Fresh screenshots**: Each of the 3 Discord messages gets a newly captured screenshot for real-time updates
+- **Macro pausing**: Fishing and eating automatically stop when combat detected, resume when cleared
+- **Random movement**: WASD keys pressed randomly (0.3-1.2s hold, 0.5-2.0s intervals) to simulate human evasion
+- **Movement stops**: Random movement automatically stops when combat clears
+- **Debug logs**: Enable debug mode to see detailed movement actions (which keys, durations)
+
 ---
 
 ## 📝 File Structure
@@ -467,7 +523,8 @@ roblox-arcane-odyssey-macro-fishing/
 │   │       ├── treasure_arcane_odyssey.png
 │   │       ├── sunken_arcane_odyssey.png
 │   │       ├── junk_arcane_odyssey.png
-│   │       └── caught_arcane_odyssey.png
+│   │       ├── caught_arcane_odyssey.png
+│   │       └── combat_arcane_odyssey.png  # Combat indicator (OPTIONAL)
 │   └── screenshots/               # Runtime screenshots (auto-deleted)
 │       └── .gitkeep
 ├── scripts/
@@ -843,6 +900,25 @@ The macro will:
 - Enable debug mode to see detection confidence scores
 - Make sure fish are actually biting
 
+#### Combat detection not working
+**Problem:** Combat alerts not triggering
+**Solutions:**
+- Make sure `combat_arcane_odyssey.png` exists in detection folder
+- Use Roblox's **Print Screen** to capture combat indicator at YOUR resolution
+- Verify `ENABLE_COMBAT_DETECTION = True` in config.py
+- Check `DISCORD_MENTION_USER_ID` is set for @mentions
+- Lower `COMBAT_CONFIDENCE` if needed (try 0.60-0.65)
+- Enable debug mode to see if combat thread is running
+
+#### Not receiving 3 Discord messages
+**Problem:** Only getting 1 combat message instead of 3
+**Solutions:**
+- Check Discord webhook URL is correct
+- Verify `ENABLE_DISCORD_NOTIFICATIONS = True`
+- Check `MENTION_ON_COMBAT_DETECTED = True`
+- Webhook may be rate-limited by Discord (small delay between messages)
+- Check console for "Sent 3 urgent Discord notifications!" message
+
 ---
 
 ## 🔧 Advanced Usage
@@ -863,6 +939,47 @@ Debug output shows:
 - Input blocking status
 - Eating schedule timing
 - Catch type detection details
+- Combat detection thread status
+
+### Combat Detection System
+
+The combat detection system runs independently in a background thread:
+
+**How it works:**
+1. Monitors for `combat_arcane_odyssey.png` every 2 seconds
+2. First detection triggers **3 separate Discord messages** with @mention
+3. **Each message gets a freshly captured screenshot** for real-time updates
+4. **Fishing and eating activities automatically pause** when combat detected
+5. **Random WASD movement starts** to simulate human evasion (appears less AFK)
+6. 10-second countdown begins
+7. If `COMBAT_AUTO_KILL_ROBLOX = True`, Roblox process is terminated after countdown
+8. If combat clears naturally, timer resets and **fishing/eating resume**
+
+**Discord notification format:**
+```
+Message 1: @YourName + ⚔️🚨 COMBAT DETECTED! 🚨⚔️ (Alert 1/3) + fresh screenshot #1
+Message 2: @YourName + ⚔️🚨 COMBAT DETECTED! 🚨⚔️ (Alert 2/3) + fresh screenshot #2
+Message 3: @YourName + ⚔️🚨 COMBAT DETECTED! 🚨⚔️ (Alert 3/3) + fresh screenshot #3
+```
+
+**Random Movement Behavior:**
+- Randomly selects W, A, S, or D keys
+- Holds each key for 0.3-1.2 seconds (randomized)
+- Pauses 0.5-2.0 seconds between movements (randomized)
+- Continues until combat clears
+- Makes bot appear like player trying to evade/escape
+
+**Configuration:**
+- `COMBAT_AUTO_KILL_ROBLOX` - Enable/disable auto-kill (default: False)
+- `COMBAT_KILL_DELAY` - Seconds before killing (default: 10)
+- `COMBAT_CONFIDENCE` - Detection sensitivity (default: 0.70)
+- `MENTION_ON_COMBAT_DETECTED` - Enable @mentions for combat (default: True)
+
+**Getting your Discord User ID:**
+1. Enable Developer Mode in Discord (User Settings > Advanced > Developer Mode)
+2. Right-click your profile anywhere
+3. Click "Copy User ID"
+4. Paste into `DISCORD_MENTION_USER_ID` in config.py
 
 ### Multiple Catch Type Detection
 
@@ -897,6 +1014,7 @@ The macro tracks and displays:
 - **Total Detections:** How many times point.png was found
 - **Total Clicks:** How many times it clicked
 - **Eat Count:** How many times it ate food
+- **Combat Detections:** How many times combat was detected
 - **Runtime:** How long the macro ran
 
 Example output:
@@ -905,6 +1023,7 @@ Fishing macro completed!
 Total detections: 45
 Total clicks: 3,250
 Total meals: 15
+Combat detections: 2
 ```
 
 ---
@@ -944,6 +1063,8 @@ When `BlockInput()` is active:
 - **NumPy** - Array operations
 - **pywin32** - Windows API access
 - **Pillow** - Image processing
+- **psutil** - Process management (combat auto-kill feature)
+- **requests** - Discord webhook notifications
 
 ### Windows APIs Used
 
@@ -1015,6 +1136,36 @@ A: Roblox anti-cheat blocks true background input. This is the best possible app
 A: Yes, comment out the eating check in the main loop.
 
 **Q: How do I stop the macro?**
+A: Press **Ctrl+Alt+M** at any time. Input will unblock immediately.
+
+**Q: What's the combat detection for?**
+A: AFK safety feature. If someone attacks you while fishing, you get 3 urgent Discord @mentions with fresh screenshots. The macro automatically pauses fishing/eating and moves randomly (W/A/S/D) to simulate human evasion. Optionally can auto-close Roblox after 10 seconds.
+
+**Q: Will the macro spam me with Discord notifications?**
+A: Only when important events happen (catches, combat, eating). Combat triggers 3 messages for urgency, each with a fresh screenshot.
+
+**Q: How do I get my Discord User ID?**
+A: Enable Developer Mode in Discord (User Settings > Advanced), right-click your profile, "Copy User ID".
+
+**Q: Does combat auto-kill close Roblox immediately?**
+A: No, 10-second grace period. If combat clears, timer resets. Default is disabled (notifications only).
+
+**Q: Can I disable combat detection?**
+A: Yes, set `ENABLE_COMBAT_DETECTION = False` in config.py.
+
+**Q: Why does combat send 3 screenshots instead of 1?**
+A: Each screenshot is freshly captured at the moment of sending, giving you real-time visual updates of the combat situation. This helps you see if the threat is escalating or if you need to act immediately.
+
+**Q: Why does the macro move WASD during combat?**
+A: To simulate human evasion behavior and avoid appearing as an AFK bot. The random movements (0.3-1.2s holds with 0.5-2.0s intervals) make it look like a player trying to escape combat.
+
+**Q: What happens if I don't set Discord User ID?**
+A: Discord notifications work but won't @mention you (less noticeable).
+
+**Q: What's the 90-second timeout for?**
+A: Critical safety feature. If something goes wrong, your input will NEVER be blocked for more than 90 seconds.
+
+---
 A: Press **ESC** or **END** key at any time. Input will unblock immediately.
 
 **Q: What's the 90-second timeout for?**

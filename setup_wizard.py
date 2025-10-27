@@ -68,6 +68,19 @@ def setup_wizard():
             config_updates['DISCORD_WEBHOOK_URL'] = webhook_url
             config_updates['ENABLE_DISCORD_NOTIFICATIONS'] = 'True'
             print("✅ Discord notifications enabled!")
+            
+            # Ask for Discord User ID for mentions
+            print()
+            print("To receive @mentions in Discord notifications:")
+            print("1. Enable Developer Mode: User Settings > Advanced > Developer Mode")
+            print("2. Right-click your profile > Copy User ID")
+            print()
+            user_id = input("Enter your Discord User ID (leave empty to skip): ").strip()
+            if user_id:
+                config_updates['DISCORD_MENTION_USER_ID'] = user_id
+                print("✅ Discord mentions enabled - you'll be tagged for important alerts!")
+            else:
+                print("ℹ️  Discord mentions disabled")
         else:
             print("⚠️  No webhook URL provided - Discord notifications disabled")
             config_updates['ENABLE_DISCORD_NOTIFICATIONS'] = 'False'
@@ -151,6 +164,41 @@ def setup_wizard():
     if save_screenshots != 'n':
         delete_after = input("Delete screenshots after sending to Discord? (y/n, default=y): ").strip().lower()
         config_updates['DELETE_SCREENSHOTS_AFTER_DISCORD'] = 'True' if delete_after != 'n' else 'False'
+    
+    print()
+    
+    # Combat detection settings
+    print("-" * 60)
+    print("⚔️  COMBAT DETECTION SETTINGS")
+    print("-" * 60)
+    print()
+    print("The macro can monitor for combat and alert you via Discord.")
+    print("This helps prevent being attacked while AFK fishing.")
+    print()
+    print("How it works:")
+    print("1. Continuously monitors for combat_arcane_odyssey.png")
+    print("2. If detected: Sends Discord alert with @mention (3 times)")
+    print("3. After 10 seconds: Can optionally close Roblox (leave the game)")
+    print()
+    
+    enable_combat = input("Enable combat detection? (y/n, default=y): ").strip().lower()
+    config_updates['ENABLE_COMBAT_DETECTION'] = 'True' if enable_combat != 'n' else 'False'
+    
+    if enable_combat != 'n':
+        print()
+        print("⚠️  AUTO-KILL OPTION:")
+        print("If combat is detected and you don't respond within 10 seconds,")
+        print("the macro can automatically close Roblox (leave the game).")
+        print()
+        auto_kill = input("Enable auto-kill Roblox when combat detected? (y/n, default=n): ").strip().lower()
+        config_updates['COMBAT_AUTO_KILL_ROBLOX'] = 'True' if auto_kill == 'y' else 'False'
+        
+        if auto_kill == 'y':
+            print("✅ Auto-kill enabled - Roblox will close 10s after combat detection")
+        else:
+            print("ℹ️  Auto-kill disabled - you'll be notified but game won't close")
+    else:
+        print("ℹ️  Combat detection disabled")
     
     print()
     

@@ -17,6 +17,16 @@ DISCORD_WEBHOOK_URL = ""  # PASTE YOUR WEBHOOK URL HERE
 # Enable/disable Discord notifications
 ENABLE_DISCORD_NOTIFICATIONS = True  # Set to False to disable all Discord notifications
 
+# Discord User ID for mentions (optional)
+# To get your User ID:
+# 1. Enable Developer Mode: User Settings > Advanced > Developer Mode
+# 2. Right-click your profile > Copy User ID
+DISCORD_MENTION_USER_ID = ""  # Your Discord User ID (e.g., "123456789012345678")
+
+# When to mention you in Discord notifications
+MENTION_ON_COMBAT_DETECTED = True  # Mention when combat is detected (WARNING)
+MENTION_ON_AUTO_KILL = True  # Mention when Roblox process is killed
+
 
 # ============================================
 # DETECTION SETTINGS
@@ -43,6 +53,7 @@ DETECTION_IMAGES = {
     'junk': 'assets/images/detection/junk_arcane_odyssey.png',
     'caught': 'assets/images/detection/caught_arcane_odyssey.png',
     'hunger': 'assets/images/detection/hunger.png',  # Optional - hunger bar
+    'combat': 'assets/images/detection/combat_arcane_odyssey.png',  # Optional - combat indicator
 }
 
 
@@ -84,6 +95,12 @@ WINDOW_NAME = "Roblox"  # Change if your window has a different title
 # Emergency input unblock timeouts (seconds)
 CRITICAL_SAFETY_TIMEOUT = 90  # Force unblock input after this many seconds
 EATING_SAFETY_TIMEOUT = 90  # Force unblock during eating after this many seconds
+
+# Combat detection settings
+ENABLE_COMBAT_DETECTION = True  # Monitor for combat and alert via Discord
+COMBAT_CONFIDENCE = 0.70  # Confidence threshold for combat detection (0.0-1.0)
+COMBAT_AUTO_KILL_ROBLOX = False  # Automatically kill Roblox process if combat detected
+COMBAT_KILL_DELAY = 10  # Seconds to wait before killing Roblox (gives you time to respond)
 
 
 # ============================================

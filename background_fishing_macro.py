@@ -61,6 +61,9 @@ try:
     from config import (
         DISCORD_WEBHOOK_URL,
         ENABLE_DISCORD_NOTIFICATIONS,
+        DISCORD_MENTION_USER_ID,
+        MENTION_ON_COMBAT_DETECTED,
+        MENTION_ON_AUTO_KILL,
         POINT_CONFIDENCE,
         FISH_CONFIDENCE,
         TREASURE_CONFIDENCE,
@@ -79,7 +82,11 @@ try:
         SAVE_DETECTION_SCREENSHOTS,
         DELETE_SCREENSHOTS_AFTER_DISCORD,
         SCREENSHOT_FOLDER,
-        DETECTION_IMAGES
+        DETECTION_IMAGES,
+        ENABLE_COMBAT_DETECTION,
+        COMBAT_CONFIDENCE,
+        COMBAT_AUTO_KILL_ROBLOX,
+        COMBAT_KILL_DELAY
     )
     print("[CONFIG] ✅ Configuration loaded from config.py")
 except ImportError:
@@ -91,6 +98,9 @@ except ImportError:
     # Set default values if config.py doesn't exist
     DISCORD_WEBHOOK_URL = ""
     ENABLE_DISCORD_NOTIFICATIONS = False
+    DISCORD_MENTION_USER_ID = ""
+    MENTION_ON_COMBAT_DETECTED = True
+    MENTION_ON_AUTO_KILL = True
     POINT_CONFIDENCE = 0.65
     FISH_CONFIDENCE = 0.75
     TREASURE_CONFIDENCE = 0.75
@@ -116,7 +126,12 @@ except ImportError:
         'sunken': 'assets/images/detection/sunken_arcane_odyssey.png',
         'junk': 'assets/images/detection/junk_arcane_odyssey.png',
         'caught': 'assets/images/detection/caught_arcane_odyssey.png',
+        'combat': 'assets/images/detection/combat_arcane_odyssey.png',
     }
+    ENABLE_COMBAT_DETECTION = True
+    COMBAT_CONFIDENCE = 0.70
+    COMBAT_AUTO_KILL_ROBLOX = False
+    COMBAT_KILL_DELAY = 10
 # ============================================
 
 # Emergency stop flag
@@ -675,6 +690,22 @@ class FishingMacro:
             print("[INFO] Hunger detection enabled - will auto-eat when hungry (threshold: 0.15)")
             print("[INFO] IMPORTANT: hunger.png should be a screenshot of the hunger BAR when it's LOW (≤35%)")
         
+        # Combat detection (optional)
+        combat_image = DETECTION_IMAGES.get('combat', 'assets/images/detection/combat_arcane_odyssey.png')
+        self.combat_detector = ImageDetector(combat_image, confidence=COMBAT_CONFIDENCE, optional=True) if combat_image else None
+        self.has_combat_detector = self.combat_detector and self.combat_detector.template is not None and ENABLE_COMBAT_DETECTION
+        self.combat_detected_time = None  # Track when combat was first detected
+        self.combat_notification_sent = False  # Track if we've sent the warning
+        self.stop_combat_detection = threading.Event()  # Signal to stop combat detection thread
+        self.combat_active = False  # Flag to pause fishing/eating during combat
+        
+        if self.has_combat_detector:
+            print(f"[INFO] Combat detection enabled - will alert via Discord (confidence: {COMBAT_CONFIDENCE})")
+            if COMBAT_AUTO_KILL_ROBLOX:
+                print(f"[INFO] AUTO-KILL ENABLED - Roblox will be terminated {COMBAT_KILL_DELAY}s after combat detection!")
+            else:
+                print("[INFO] Auto-kill disabled - you'll be notified but game won't close")
+        
         # Load caught detection images from config
         self.caught_detectors = []
         detector_configs = [
@@ -728,6 +759,7 @@ class FishingMacro:
         self.macro_start_time = time.time()
         self.last_catch_time = time.time()  # Track time of last catch for duration calculation
         self.auto_cast_count = 0  # Track number of auto-casts (no detection timeout)
+        self.combat_detection_count = 0  # Track number of times combat was detected
     
     def _send_eating_notification(self):
         """Send Discord notification about eating completion (runs in background thread)"""
@@ -1089,6 +1121,281 @@ class FishingMacro:
             return True
         return False
     
+    def combat_detection_worker(self):
+        """Background thread that continuously monitors for combat
+        
+        This thread runs independently and checks for combat_arcane_odyssey.png
+        If detected:
+        1. Send Discord notification with @mention (3 times) and screenshot
+        2. Wait COMBAT_KILL_DELAY seconds
+        3. If still detected and COMBAT_AUTO_KILL_ROBLOX is True, kill Roblox process
+        """
+        global emergency_stop
+        
+        print("[COMBAT DETECTION] Thread started - monitoring for combat...")
+        
+        check_counter = 0
+        last_debug_print = time.time()
+        
+        while not self.stop_combat_detection.is_set() and not emergency_stop:
+            try:
+                # Capture screenshot
+                screenshot = self.window_capture.capture_window()
+                
+                if screenshot is not None and self.has_combat_detector:
+                    check_counter += 1
+                    
+                    # Debug: Print status every 30 seconds
+                    if self.debug and (time.time() - last_debug_print) >= 30.0:
+                        print(f"[COMBAT DETECTION] Alive - {check_counter} checks performed")
+                        last_debug_print = time.time()
+                    
+                    # Check for combat indicator
+                    combat_location = self.combat_detector.find_in_image(screenshot)
+                    
+                    if combat_location:
+                        # Combat detected!
+                        if self.combat_detected_time is None:
+                            # First detection
+                            self.combat_detected_time = time.time()
+                            self.combat_detection_count += 1
+                            
+                            print(f"\n{'='*60}")
+                            print(f"[COMBAT DETECTED] ⚔️  WARNING! Combat indicator found!")
+                            print(f"[COMBAT DETECTED] Confidence: {combat_location['confidence']:.2f}")
+                            print(f"[COMBAT DETECTED] Location: ({combat_location['x']}, {combat_location['y']})")
+                            print(f"{'='*60}\n")
+                            
+                            # Send Discord notification with mention (SPAM 3 MESSAGES for maximum urgency) in background
+                            def send_combat_alert():
+                                """Send urgent combat alert to Discord (3 SEPARATE MESSAGES WITH FRESH SCREENSHOTS)"""
+                                # Send Discord notification (3 TIMES!)
+                                if ENABLE_DISCORD_NOTIFICATIONS:
+                                    # Build mention string
+                                    mention = ""
+                                    if DISCORD_MENTION_USER_ID and MENTION_ON_COMBAT_DETECTED:
+                                        mention = f"<@{DISCORD_MENTION_USER_ID}>\n"
+                                    
+                                    session_duration = time.time() - self.macro_start_time
+                                    session_minutes = int(session_duration // 60)
+                                    session_seconds = int(session_duration % 60)
+                                    
+                                    action_text = f"Roblox will be terminated in {COMBAT_KILL_DELAY}s" if COMBAT_AUTO_KILL_ROBLOX else "Game will NOT be closed (auto-kill disabled)"
+                                    
+                                    # SPAM 3 MESSAGES with FRESH screenshots for maximum urgency!
+                                    for i in range(3):
+                                        # Capture fresh screenshot for each message
+                                        fresh_screenshot = self.window_capture.capture_window()
+                                        screenshot_saved = False
+                                        screenshot_path = None
+                                        
+                                        if SAVE_DETECTION_SCREENSHOTS and fresh_screenshot is not None:
+                                            timestamp = time.strftime("%Y%m%d_%H%M%S")
+                                            screenshot_path = f"{SCREENSHOT_FOLDER}/combat_detected_{timestamp}_msg{i+1}_conf{combat_location['confidence']:.2f}.png"
+                                            
+                                            try:
+                                                import os
+                                                os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                                                cv2.imwrite(screenshot_path, fresh_screenshot)
+                                                screenshot_saved = True
+                                                print(f"[COMBAT DETECTION] 📸 Screenshot {i+1}/3 saved: {screenshot_path}")
+                                            except Exception as e:
+                                                print(f"[COMBAT DETECTION] Failed to save screenshot {i+1}: {e}")
+                                        
+                                        embed = {
+                                            "title": f"⚔️🚨 COMBAT DETECTED! 🚨⚔️ (Alert {i+1}/3)",
+                                            "description": f"**Combat indicator found on screen!**\n\n{action_text}",
+                                            "color": 15158332,  # Red color
+                                            "fields": [
+                                                {
+                                                    "name": "🎯 Confidence",
+                                                    "value": f"{combat_location['confidence']:.1%}",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "📍 Location",
+                                                    "value": f"({combat_location['x']}, {combat_location['y']})",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "🔔 Detection #",
+                                                    "value": f"{self.combat_detection_count}",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "🕐 Session Duration",
+                                                    "value": f"{session_minutes}m {session_seconds}s",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "📊 Total Catches",
+                                                    "value": f"{self.total_catches}",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "⏱️ Action",
+                                                    "value": f"{'AUTO-KILL in ' + str(COMBAT_KILL_DELAY) + 's' if COMBAT_AUTO_KILL_ROBLOX else 'Manual intervention required'}",
+                                                    "inline": True
+                                                }
+                                            ],
+                                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                        }
+                                        
+                                        # Send message with screenshot
+                                        if screenshot_saved and screenshot_path:
+                                            send_discord_notification(DISCORD_WEBHOOK_URL, mention, embed, image_path=screenshot_path)
+                                            
+                                            # Delete screenshot after sending
+                                            if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                                                try:
+                                                    if os.path.exists(screenshot_path):
+                                                        os.remove(screenshot_path)
+                                                except Exception as e:
+                                                    print(f"[COMBAT DETECTION] Failed to delete screenshot {i+1}: {e}")
+                                        else:
+                                            # Send without screenshot if capture/save failed
+                                            send_discord_notification(DISCORD_WEBHOOK_URL, mention, embed)
+                                        
+                                        # Small delay between messages to ensure they arrive in order
+                                        time.sleep(0.5)
+                                    
+                                    print(f"[COMBAT DETECTION] 🚨 Sent 3 urgent Discord notifications with fresh screenshots!")
+                            
+                            # Send alert in background thread
+                            threading.Thread(target=send_combat_alert, daemon=True).start()
+                            self.combat_notification_sent = True
+                            
+                            # Set combat flag to pause fishing/eating
+                            self.combat_active = True
+                            print("[COMBAT DETECTION] ⚠️  Fishing and eating paused - combat mode active")
+                            
+                            # Start random movement thread to avoid suspicion
+                            def random_movement_worker():
+                                """Randomly move WASD to appear active during combat"""
+                                import random
+                                print("[COMBAT MOVEMENT] Thread started - moving randomly to avoid suspicion")
+                                
+                                # Virtual key codes for WASD
+                                VK_W = 0x57
+                                VK_A = 0x41
+                                VK_S = 0x53
+                                VK_D = 0x44
+                                movement_keys = [VK_W, VK_A, VK_S, VK_D]
+                                
+                                while self.combat_active and not self.stop_combat_detection.is_set():
+                                    try:
+                                        # Pick random direction
+                                        key = random.choice(movement_keys)
+                                        key_name = {VK_W: 'W', VK_A: 'A', VK_S: 'S', VK_D: 'D'}[key]
+                                        
+                                        # Press and hold for random duration
+                                        hold_duration = random.uniform(0.3, 1.2)
+                                        
+                                        if self.debug:
+                                            print(f"[COMBAT MOVEMENT] Pressing {key_name} for {hold_duration:.2f}s")
+                                        
+                                        # Press key down
+                                        scan_code = ctypes.windll.user32.MapVirtualKeyW(key, 0)
+                                        ctypes.windll.user32.keybd_event(key, scan_code, 0, 0)
+                                        time.sleep(hold_duration)
+                                        
+                                        # Release key
+                                        ctypes.windll.user32.keybd_event(key, scan_code, 2, 0)  # 2 = KEYEVENTF_KEYUP
+                                        
+                                        # Random pause between movements
+                                        time.sleep(random.uniform(0.5, 2.0))
+                                        
+                                    except Exception as e:
+                                        if self.debug:
+                                            print(f"[COMBAT MOVEMENT ERROR] {e}")
+                                        time.sleep(1)
+                                
+                                print("[COMBAT MOVEMENT] Thread stopped")
+                            
+                            # Start movement thread
+                            threading.Thread(target=random_movement_worker, daemon=True).start()
+                        
+                        # Check if we should kill Roblox process
+                        elapsed_since_detection = time.time() - self.combat_detected_time
+                        
+                        if COMBAT_AUTO_KILL_ROBLOX and elapsed_since_detection >= COMBAT_KILL_DELAY:
+                            print(f"\n{'='*60}")
+                            print(f"[COMBAT DETECTION] ⚠️  Combat still active after {COMBAT_KILL_DELAY}s!")
+                            print(f"[COMBAT DETECTION] 🔴 TERMINATING ROBLOX PROCESS...")
+                            print(f"{'='*60}\n")
+                            
+                            # Kill Roblox process
+                            try:
+                                import psutil
+                                killed = False
+                                
+                                for proc in psutil.process_iter(['name', 'pid']):
+                                    if proc.info['name'] and 'roblox' in proc.info['name'].lower():
+                                        print(f"[COMBAT DETECTION] Killing process: {proc.info['name']} (PID: {proc.info['pid']})")
+                                        proc.kill()
+                                        killed = True
+                                
+                                if killed:
+                                    print("[COMBAT DETECTION] ✅ Roblox process terminated successfully")
+                                    
+                                    # Send final Discord notification
+                                    if ENABLE_DISCORD_NOTIFICATIONS:
+                                        mention = ""
+                                        if DISCORD_MENTION_USER_ID and MENTION_ON_AUTO_KILL:
+                                            mention = f"<@{DISCORD_MENTION_USER_ID}>\n"
+                                        
+                                        embed = {
+                                            "title": "🔴 Roblox Process Terminated",
+                                            "description": f"Combat was still active after {COMBAT_KILL_DELAY}s - Roblox has been closed.",
+                                            "color": 10038562,  # Dark red
+                                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                        }
+                                        send_discord_notification_async(DISCORD_WEBHOOK_URL, mention, embed)
+                                    
+                                    # Trigger emergency stop
+                                    emergency_stop = True
+                                else:
+                                    print("[COMBAT DETECTION] ⚠️  No Roblox process found to terminate")
+                                    
+                            except Exception as e:
+                                print(f"[COMBAT DETECTION] ❌ Failed to kill Roblox process: {e}")
+                                import traceback
+                                traceback.print_exc()
+                            
+                            # Stop combat detection after killing
+                            break
+                    
+                    else:
+                        # Combat not detected - reset timer and resume macro
+                        if self.combat_detected_time is not None:
+                            print(f"[COMBAT DETECTION] ✅ Combat indicator cleared")
+                            self.combat_detected_time = None
+                            self.combat_notification_sent = False
+                            
+                            # Resume fishing and eating
+                            self.combat_active = False
+                            print("[COMBAT DETECTION] ✅ Fishing and eating resumed - combat ended")
+                
+                # Check every 2 seconds (no need to spam)
+                time.sleep(2)
+                
+            except Exception as e:
+                if not self.stop_combat_detection.is_set():
+                    print(f"[COMBAT DETECTION ERROR] {e}")
+                    import traceback
+                    traceback.print_exc()
+                time.sleep(2)
+        
+        print("[COMBAT DETECTION] Thread stopped")
+    
+    def start_combat_detection(self):
+        """Start the combat detection thread"""
+        if self.has_combat_detector:
+            combat_thread = threading.Thread(target=self.combat_detection_worker, daemon=True)
+            combat_thread.start()
+            return combat_thread
+        return None
+    
     def detection_worker(self, point_detected_time=None):
         """Background thread that continuously checks for caught fish"""
         thread_start_time = time.time()
@@ -1239,6 +1546,12 @@ class FishingMacro:
         print("The Roblox window can be in the background!")
         print("-" * 50)
         
+        # Start combat detection thread
+        combat_thread = self.start_combat_detection()
+        if combat_thread:
+            print("[INFO] Combat detection thread started")
+            print()
+        
         while time.time() < self.end_time and not emergency_stop:
             # Check emergency stop at the very start of each iteration
             if emergency_stop:
@@ -1265,9 +1578,23 @@ class FishingMacro:
             if not point_location and self.should_eat_now():
                 if self.debug:
                     print("[DEBUG] No active fishing detected, time to eat")
-                self.eat_food()
-                # Wait a bit after eating before continuing
-                time.sleep(2)
+                
+                # Only eat if not in combat
+                if not self.combat_active:
+                    self.eat_food()
+                    # Wait a bit after eating before continuing
+                    time.sleep(2)
+                else:
+                    if self.debug:
+                        print("[DEBUG] Skipping eating - combat active")
+                
+                continue
+            
+            # Skip fishing detection if combat is active
+            if self.combat_active:
+                if self.debug:
+                    print("[DEBUG] Skipping fishing - combat active")
+                time.sleep(1)
                 continue
             
             # Process fishing point if detected
@@ -1588,6 +1915,14 @@ class FishingMacro:
         print(f"Fishing macro completed!")
         print(f"Total detections: {self.detection_count}")
         print(f"Total clicks: {self.click_count}")
+        if self.combat_detection_count > 0:
+            print(f"Combat detections: {self.combat_detection_count}")
+        
+        # Stop combat detection thread
+        self.stop_combat_detection.set()
+        if combat_thread and combat_thread.is_alive():
+            combat_thread.join(timeout=2)
+            print("[CLEANUP] Combat detection thread stopped")
         
         # Ensure input is unblocked at the end
         if input_currently_blocked:
