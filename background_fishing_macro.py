@@ -654,7 +654,7 @@ class ImageDetector:
 class FishingMacro:
     """Main fishing macro controller"""
     
-    def __init__(self, fishing_time_seconds, eating_interval_seconds, max_eat_count, debug=False):
+    def __init__(self, fishing_time_seconds, eating_interval_seconds, eating_count, debug=False):
         self.window_capture = BackgroundWindowCapture(WINDOW_NAME)
         self.point_detector = ImageDetector(DETECTION_IMAGES.get('point', 'assets/images/detection/point.png'), confidence=POINT_CONFIDENCE)
         
@@ -703,9 +703,9 @@ class FishingMacro:
         # User-configured eating schedule
         self.last_eat_time = time.time()
         self.next_eat_interval = eating_interval_seconds
-        self.max_eat_count = max_eat_count
-        self.eat_count = 0
-        print(f"[INFO] Eating configured - will eat {max_eat_count} times, every {eating_interval_seconds}s")
+        self.eating_count = eating_count  # How many food items to eat per session
+        self.eat_count = 0  # Track number of eating sessions
+        print(f"[INFO] Eating configured - will eat {eating_count} food items every {eating_interval_seconds}s (continuously throughout session)")
         
         # Threading for parallel detection
         self.detection_queue = queue.Queue()
@@ -750,10 +750,10 @@ class FishingMacro:
             time.sleep(2)  # Longer delay to ensure game processes the key
             
             if self.debug:
-                print("[DEBUG] Pressed food slot to select food - now clicking to eat")
+                print(f"[DEBUG] Pressed food slot to select food - now clicking to eat {self.eating_count} times")
             
-            # Click 3 times to eat with longer delays to ensure each food is consumed
-            for i in range(3):
+            # Click N times to eat with longer delays to ensure each food is consumed
+            for i in range(self.eating_count):
                 # Safety check: unblock if eating takes too long
                 eat_duration = time.time() - eat_input_block_start_time
                 if eat_duration > CRITICAL_SAFETY_TIMEOUT:
@@ -765,7 +765,7 @@ class FishingMacro:
                     return
                 
                 if self.debug:
-                    print(f"[DEBUG] Eating click {i+1}/3")
+                    print(f"[DEBUG] Eating click {i+1}/{self.eating_count}")
                 self.window_capture.send_click(center_x, center_y, debug=False)
                 self.click_count += 1
                 time.sleep(0.8)  # Longer delay between clicks to let animation/consumption finish
@@ -798,11 +798,7 @@ class FishingMacro:
             # Update last eat time (interval stays constant)
             self.last_eat_time = time.time()
             
-            # Check if we've reached max eat count
-            if self.eat_count >= self.max_eat_count:
-                print(f"[EATING] Finished eating - reached max eat count ({self.max_eat_count})")
-            else:
-                print(f"[EATING] Finished eating - next meal in {self.next_eat_interval}s (Meal {self.eat_count}/{self.max_eat_count})")
+            print(f"[EATING] Finished eating - next meal in {self.next_eat_interval}s")
             
             # Send Discord notification about eating
             if ENABLE_DISCORD_NOTIFICATIONS:
@@ -812,7 +808,7 @@ class FishingMacro:
                 
                 embed = {
                     "title": "🍖 Food Break!",
-                    "description": f"Eating session #{self.eat_count} of {self.max_eat_count} completed",
+                    "description": f"Eating session #{self.eat_count} completed (ate {self.eating_count} food items)",
                     "color": 3447003,  # Blue color
                     "fields": [
                         {
@@ -822,7 +818,7 @@ class FishingMacro:
                         },
                         {
                             "name": "⏰ Next Meal In",
-                            "value": f"{self.next_eat_interval // 60}m {self.next_eat_interval % 60}s" if self.eat_count < self.max_eat_count else "No more meals",
+                            "value": f"{self.next_eat_interval // 60}m {self.next_eat_interval % 60}s",
                             "inline": True
                         },
                         {
@@ -849,11 +845,7 @@ class FishingMacro:
             print("[INFO] User input unblocked after eating - you can use keyboard/mouse again")
     
     def should_eat_now(self):
-        """Check if it's time to eat based on user-configured interval and eat count limit"""
-        # Don't eat if we've reached the max count
-        if self.eat_count >= self.max_eat_count:
-            return False
-        
+        """Check if it's time to eat based on user-configured interval"""
         elapsed = time.time() - self.last_eat_time
         if elapsed >= self.next_eat_interval:
             return True
@@ -1069,7 +1061,47 @@ class FishingMacro:
                     # Show confidence scores every check in debug mode
                     if self.debug and check_counter % 5 == 0:
                         conf_str = " | ".join([f"{name}:{conf:.2f}" for name, conf in max_confidences])
-                        print(f"[DETECTION CHECK #{check_counter}] Confidences: {conf_str} (threshold: 0.50)")
+                        print(f"[DETECTION CHECK #{check_counter}] Confidences: {conf_str}")
+                    
+                    # Send screenshot to Discord if no detector meets threshold (every 10 checks to avoid spam)
+                    if check_counter % 10 == 0 and highest_confidence > 0 and ENABLE_DISCORD_NOTIFICATIONS:
+                        timestamp = time.strftime("%Y%m%d_%H%M%S")
+                        detector_name_clean = highest_conf_name.replace('.png', '')
+                        screenshot_path = f"{SCREENSHOT_FOLDER}/no_threshold_{detector_name_clean}_{timestamp}_conf{highest_confidence:.2f}.png"
+                        
+                        try:
+                            import os
+                            os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                            cv2.imwrite(screenshot_path, screenshot)
+                            
+                            embed = {
+                                "title": "⚠️ Detection Below Threshold",
+                                "description": f"Highest confidence: **{highest_conf_name}** at {highest_confidence:.1%}",
+                                "color": 16776960,  # Yellow color
+                                "fields": [
+                                    {
+                                        "name": "🎯 All Confidences",
+                                        "value": " | ".join([f"{name}: {conf:.1%}" for name, conf in max_confidences]),
+                                        "inline": False
+                                    },
+                                    {
+                                        "name": "🔍 Check Number",
+                                        "value": str(check_counter),
+                                        "inline": True
+                                    }
+                                ],
+                                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                            }
+                            
+                            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+                            
+                            # Delete screenshot after sending
+                            if DELETE_SCREENSHOTS_AFTER_DISCORD and os.path.exists(screenshot_path):
+                                os.remove(screenshot_path)
+                                
+                        except Exception as e:
+                            print(f"[DETECTION THREAD] Failed to send threshold warning: {e}")
+                    
                 else:
                     capture_errors += 1
                     if capture_errors > 3 and self.debug:
@@ -1135,18 +1167,65 @@ class FishingMacro:
                 self.detection_count += 1
                 self.last_detection_time = time.time()
                 
-                # SAVE SCREENSHOT when point is detected!
-                # timestamp = time.strftime("%Y%m%d_%H%M%S")
-                # screenshot_path = f"assets/screenshots/point_{timestamp}_conf{point_location['confidence']:.2f}.png"
-                # try:
-                #     import os
-                #     os.makedirs("assets/screenshots", exist_ok=True)
-                #     cv2.imwrite(screenshot_path, screenshot)
-                #     if self.debug:
-                #         print(f"[POINT DETECTION] 📸 Screenshot saved: {screenshot_path}")
-                # except Exception as e:
-                #     if self.debug:
-                #         print(f"[POINT DETECTION] Failed to save screenshot: {e}")
+                # SAVE SCREENSHOT when point is detected and send to Discord
+                screenshot_saved = False
+                screenshot_path = None
+                
+                if SAVE_DETECTION_SCREENSHOTS:
+                    timestamp = time.strftime("%Y%m%d_%H%M%S")
+                    screenshot_path = f"{SCREENSHOT_FOLDER}/point_{timestamp}_conf{point_location['confidence']:.2f}.png"
+                    try:
+                        import os
+                        os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                        cv2.imwrite(screenshot_path, screenshot)
+                        screenshot_saved = True
+                        if self.debug:
+                            print(f"[POINT DETECTION] 📸 Screenshot saved: {screenshot_path}")
+                    except Exception as e:
+                        if self.debug:
+                            print(f"[POINT DETECTION] Failed to save screenshot: {e}")
+                
+                # Send Discord notification for point detection
+                if ENABLE_DISCORD_NOTIFICATIONS:
+                    embed = {
+                        "title": "🎣 Fish Bite Detected!",
+                        "description": "Starting clicking sequence...",
+                        "color": 3447003,  # Blue color
+                        "fields": [
+                            {
+                                "name": "🎯 Confidence",
+                                "value": f"{point_location['confidence']:.1%}",
+                                "inline": True
+                            },
+                            {
+                                "name": "📍 Location",
+                                "value": f"({point_location['x']}, {point_location['y']})",
+                                "inline": True
+                            },
+                            {
+                                "name": "🔢 Detection Count",
+                                "value": str(self.detection_count),
+                                "inline": True
+                            }
+                        ],
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                    }
+                    
+                    if screenshot_saved and screenshot_path:
+                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+                        
+                        # Delete screenshot after sending
+                        if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                            try:
+                                if os.path.exists(screenshot_path):
+                                    os.remove(screenshot_path)
+                                    if self.debug:
+                                        print(f"[DISCORD] Screenshot deleted: {screenshot_path}")
+                            except Exception as e:
+                                if self.debug:
+                                    print(f"[DISCORD] Failed to delete screenshot: {e}")
+                    else:
+                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
                 
                 print(f"[DETECTED] Point found at ({point_location['x']}, {point_location['y']}) "
                       f"- Confidence: {point_location['confidence']:.2f}")
@@ -1421,11 +1500,13 @@ def main():
         # Get eating configuration from user (with defaults from config)
         print()
         print(f"Eating configuration (defaults from config.py):")
+        eating_count_input = input(f"Enter number of food items per eating session (default={DEFAULT_EATING_COUNT}): ").strip()
+        eating_count = int(eating_count_input) if eating_count_input else DEFAULT_EATING_COUNT
+        
         eating_interval_input = input(f"Enter eating interval in seconds (default={DEFAULT_EATING_INTERVAL}): ").strip()
         eating_interval = int(eating_interval_input) if eating_interval_input else DEFAULT_EATING_INTERVAL
         
-        eating_count_input = input(f"How many times to eat (default={DEFAULT_EATING_COUNT}): ").strip()
-        eating_count = int(eating_count_input) if eating_count_input else DEFAULT_EATING_COUNT
+        print(f"[INFO] Will eat {eating_count} food items every {eating_interval}s continuously throughout the session")
         
         # Ask if user wants debug mode
         debug_input = input("Enable debug mode? (y/n, default=y): ").strip().lower()
@@ -1475,7 +1556,7 @@ def main():
                     },
                     {
                         "name": "🍖 Eating Config",
-                        "value": f"{eating_count}x every {eating_interval}s",
+                        "value": f"{eating_count}x every {eating_interval}s (continuous)",
                         "inline": True
                     },
                     {

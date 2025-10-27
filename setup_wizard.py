@@ -118,21 +118,21 @@ def setup_wizard():
     print("🍖 EATING SCHEDULE SETUP")
     print("-" * 60)
     print()
-    print("The macro can automatically eat food at regular intervals.")
+    print("The macro will automatically eat food at regular intervals.")
     print("This prevents hunger from affecting fishing.")
     print()
-    print("You'll be prompted for these values each time you run the macro,")
+    print("You'll be prompted for eating settings each time you run the macro,")
     print("but you can set defaults here.")
     print()
     
     try:
+        eating_count = int(input("Default number of food items per eating session (default=3): ") or "3")
         eating_interval = int(input("Default eating interval in seconds (default=300): ") or "300")
-        eating_count = int(input("Default eating count per session (default=3): ") or "3")
-        config_updates['DEFAULT_EATING_INTERVAL'] = str(eating_interval)
         config_updates['DEFAULT_EATING_COUNT'] = str(eating_count)
-        print(f"✅ Default: Eat {eating_count} times, every {eating_interval}s ({eating_interval//60}m)")
+        config_updates['DEFAULT_EATING_INTERVAL'] = str(eating_interval)
+        print(f"✅ Default: Eat {eating_count} food items every {eating_interval}s ({eating_interval//60}m) continuously")
     except ValueError:
-        print("⚠️  Invalid input - using default values (300s, 3 times)")
+        print("⚠️  Invalid input - using default values (3 items, 300s)")
     
     print()
     

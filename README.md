@@ -256,8 +256,8 @@ For better detection speed, capture these the same way:
 
 5. **Follow the prompts:**
    - Enter duration in seconds (e.g., 3600 for 1 hour)
+   - Enter number of food items per eating session (or press Enter for default from config)
    - Enter eating interval (or press Enter for default from config)
-   - Enter eating count (or press Enter for default from config)
    - Enable debug mode (y/n) - shows detailed information
 
 6. **🚨 EMERGENCY STOP:** Press **Ctrl+Alt+M** anytime to stop immediately
@@ -278,7 +278,8 @@ For better detection speed, capture these the same way:
 - ✅ **Mouse Position Restoration** - Returns mouse to original position after fishing
 
 ### Eating System
-- ✅ **User-Configurable Schedule** - Set eating interval and count
+- ✅ **User-Configurable Schedule** - Set eating count and interval
+- ✅ **Continuous Eating** - Configurable N food items per session, continuously throughout macro runtime
 - ✅ **Smart Eating Logic** - Doesn't eat while actively fishing
 - ✅ **Auto Re-equip** - Automatically re-equips fishing rod after eating
 - ✅ **Configurable Slots** - Change food/rod slots in config.py
@@ -338,10 +339,12 @@ CLICK_DELAY = 0.001         # Click speed (1ms between clicks)
 #### Eating Settings
 ```python
 DEFAULT_EATING_INTERVAL = 300  # Default: eat every 5 minutes
-DEFAULT_EATING_COUNT = 3       # Default: eat 3 times per session
+DEFAULT_EATING_COUNT = 3      # Default: eat 3 food items per session
 FOOD_SLOT_KEY = 0x30          # Slot 0 for food
 ROD_SLOT_KEY = 0x39           # Slot 9 for rod
 ```
+
+**Note:** The macro eats a configurable number of food items (default 3) per eating session, and will continue eating at the configured interval throughout the entire fishing duration to prevent death from hunger.
 
 #### Safety Settings
 ```python
@@ -676,7 +679,7 @@ Remember: This is an educational project demonstrating AI-assisted development a
 - ✅ **Center-Screen Clicking** - All clicks at screen center for consistency
 - ✅ **Multi-Timeout System** - 40s normal, 84s safety, 90s critical force-unblock
 - ✅ **Detailed Logging** - Debug mode shows everything happening
-- ✅ **Statistics Tracking** - Total detections, clicks, eating count
+- ✅ **Statistics Tracking** - Total detections, clicks, eating sessions
 
 ---
 
@@ -721,7 +724,7 @@ Remember: This is an educational project demonstrating AI-assisted development a
         ↓
 4. Press configured food key ────────────> Select food slot (default: '0') 🍖
         ↓
-5. Click 3 times (0.8s delay each) ───────> Consume 3 food items
+5. Click N times (0.8s delay each) ──────> Consume N food items per session (configurable)
         ↓
 6. Wait 1 second ─────────────────────────> Let animation finish
         ↓
@@ -731,8 +734,10 @@ Remember: This is an educational project demonstrating AI-assisted development a
         ↓
 9. Unblock Input ─────────────────────────> Restore control 🔓
         ↓
-10. Schedule Next Meal ───────────────────> Based on config interval
+10. Schedule Next Meal ───────────────────> Based on config interval (repeats indefinitely)
 ```
+
+**Note:** The macro will continue eating at the configured interval throughout the entire fishing session to prevent death from hunger.
 
 ---
 

@@ -62,9 +62,9 @@ CLICK_DELAY = 0.001  # 0.001 = ~1000 clicks/sec theoretical max
 # ============================================
 # EATING SETTINGS
 # ============================================
-# These are default values - you'll be prompted to set them when running the script
+# Default eating settings - you'll be prompted to set these when running the script
 DEFAULT_EATING_INTERVAL = 300  # Default: eat every 300 seconds (5 minutes)
-DEFAULT_EATING_COUNT = 3  # Default: eat 3 times per session
+DEFAULT_EATING_COUNT = 3  # Default: eat 3 food items per eating session
 
 # Inventory slots
 FOOD_SLOT_KEY = 0x30  # Key code for slot 0 (food)
