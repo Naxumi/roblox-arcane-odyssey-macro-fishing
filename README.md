@@ -138,12 +138,25 @@ According to rule 2.3.1, you **MUST**:
    .\install.bat
    ```
 
+   This will:
+   - Check Python installation
+   - Create a virtual environment (`.venv`)
+   - Activate the virtual environment
+   - Install required packages in the venv
+   
    Or install manually:
    ```powershell
+   python -m venv .venv
+   .venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
 ### Step 2: Configuration
+
+**⚠️ IMPORTANT: Always activate the virtual environment first!**
+```powershell
+.venv\Scripts\activate
+```
 
 **Option A: Quick Setup (Recommended)**
 ```powershell
@@ -230,18 +243,25 @@ For better detection speed, capture these the same way:
    cd c:\path\to\roblox-arcane-odyssey-macro-fishing
    ```
 
-3. **Run the macro:**
+3. **Activate the virtual environment:**
+   ```powershell
+   .venv\Scripts\activate
+   ```
+   
+   You should see `(.venv)` appear at the start of your prompt.
+
+4. **Run the macro:**
    ```powershell
    python background_fishing_macro.py
    ```
 
-4. **Follow the prompts:**
+5. **Follow the prompts:**
    - Enter duration in seconds (e.g., 3600 for 1 hour)
    - Enter eating interval (or press Enter for default from config)
    - Enter eating count (or press Enter for default from config)
    - Enable debug mode (y/n) - shows detailed information
 
-5. **🚨 EMERGENCY STOP:** Press **Ctrl+Alt+M** anytime to stop immediately
+6. **🚨 EMERGENCY STOP:** Press **Ctrl+Alt+M** anytime to stop immediately
 
 ---
 
@@ -464,6 +484,16 @@ roblox-arcane-odyssey-macro-fishing/
 git clone https://github.com/Naxumi/roblox-arcane-odyssey-macro-fishing.git
 cd roblox-arcane-odyssey-macro-fishing
 
+# Run installation script (creates venv and installs dependencies)
+.\scripts\install.bat
+
+# OR manually:
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+.venv\Scripts\activate
+
 # Install dependencies
 pip install -r requirements.txt
 
@@ -471,7 +501,8 @@ pip install -r requirements.txt
 copy config.example.py config.py
 # Edit config.py with your settings
 
-# Run
+# Run (always activate venv first!)
+.venv\Scripts\activate
 python background_fishing_macro.py
 ```
 

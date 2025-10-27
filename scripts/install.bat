@@ -33,6 +33,38 @@ if not exist "requirements.txt" (
     exit /b 1
 )
 
+REM Create virtual environment if it doesn't exist
+if not exist ".venv" (
+    echo Creating virtual environment (.venv)...
+    python -m venv .venv
+    if errorlevel 1 (
+        echo.
+        echo ERROR: Failed to create virtual environment!
+        echo Make sure you have venv module installed.
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [OK] Virtual environment created
+    echo.
+) else (
+    echo [OK] Virtual environment already exists
+    echo.
+)
+
+REM Activate virtual environment
+echo Activating virtual environment...
+call .venv\Scripts\activate.bat
+if errorlevel 1 (
+    echo.
+    echo ERROR: Failed to activate virtual environment!
+    echo.
+    pause
+    exit /b 1
+)
+echo [OK] Virtual environment activated
+echo.
+
 echo Installing Python packages from requirements.txt...
 echo.
 pip install -r requirements.txt
@@ -41,7 +73,8 @@ if errorlevel 1 (
     echo.
     echo ERROR: Failed to install dependencies!
     echo.
-    echo Try running this command manually:
+    echo Try running these commands manually:
+    echo .venv\Scripts\activate.bat
     echo pip install -r requirements.txt
     echo.
     pause
@@ -52,6 +85,8 @@ echo.
 echo ========================================
 echo Installation completed successfully!
 echo ========================================
+echo.
+echo IMPORTANT: Virtual environment is now activated (.venv)
 echo.
 echo Next steps:
 echo.
@@ -67,8 +102,12 @@ echo    - The provided images may NOT work for your resolution
 echo    - You may need to retake screenshots at YOUR resolution
 echo    - See README.md for detailed instructions
 echo.
-echo 4. Run the macro:
+echo 4. Run the macro (always activate venv first):
+echo    .venv\Scripts\activate.bat
 echo    python background_fishing_macro.py
+echo.
+echo NOTE: Always activate the virtual environment before running:
+echo    .venv\Scripts\activate.bat
 echo.
 echo For detailed setup instructions, read README.md
 echo.
