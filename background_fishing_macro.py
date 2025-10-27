@@ -327,6 +327,15 @@ def start_emergency_listener():
     listener_thread.start()
     return listener_thread
 
+def send_discord_notification_async(webhook_url, message, embed=None, image_path=None):
+    """Send Discord notification in a background thread to avoid blocking"""
+    def _send():
+        send_discord_notification(webhook_url, message, embed, image_path)
+    
+    thread = threading.Thread(target=_send, daemon=True)
+    thread.start()
+    return thread
+
 def send_discord_notification(webhook_url, message, embed=None, image_path=None):
     """Send a notification to Discord via webhook
     
@@ -718,6 +727,262 @@ class FishingMacro:
         self.catch_history = []  # List of (detector_name, confidence, timestamp)
         self.macro_start_time = time.time()
         self.last_catch_time = time.time()  # Track time of last catch for duration calculation
+        self.auto_cast_count = 0  # Track number of auto-casts (no detection timeout)
+    
+    def _send_eating_notification(self):
+        """Send Discord notification about eating completion (runs in background thread)"""
+        duration_since_last_meal = time.time() - (self.last_eat_time - (self.last_eat_time - (time.time() - self.next_eat_interval)))
+        elapsed_minutes = int(duration_since_last_meal // 60)
+        elapsed_seconds = int(duration_since_last_meal % 60)
+        
+        embed = {
+            "title": "🍖 Food Break!",
+            "description": f"Eating session #{self.eat_count} completed (ate {self.eating_count} food items)",
+            "color": 3447003,  # Blue color
+            "fields": [
+                {
+                    "name": "⏱️ Duration Since Last Meal",
+                    "value": f"{elapsed_minutes}m {elapsed_seconds}s",
+                    "inline": True
+                },
+                {
+                    "name": "⏰ Next Meal In",
+                    "value": f"{self.next_eat_interval // 60}m {self.next_eat_interval % 60}s",
+                    "inline": True
+                },
+                {
+                    "name": "📊 Total Catches",
+                    "value": f"{self.total_catches} fish",
+                    "inline": True
+                }
+            ],
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+        }
+        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+    
+    def _save_and_notify_catch(self, screenshot, img_name, max_val, detector_name, time_since_last_catch, check_counter):
+        """Save screenshot and send Discord notification for catch (runs in background thread)"""
+        screenshot_saved = False
+        screenshot_path = None
+        
+        if SAVE_DETECTION_SCREENSHOTS:
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            detector_name_clean = img_name.split('/')[-1].replace('.png', '')
+            screenshot_path = f"{SCREENSHOT_FOLDER}/detected_{detector_name_clean}_{timestamp}_conf{max_val:.2f}.png"
+            
+            try:
+                import os
+                os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                cv2.imwrite(screenshot_path, screenshot)
+                screenshot_saved = True
+                print(f"[DETECTION THREAD] 📸 Screenshot saved: {screenshot_path}")
+            except Exception as e:
+                print(f"[DETECTION THREAD] Failed to save screenshot: {e}")
+        
+        # Send Discord notification about the catch
+        if ENABLE_DISCORD_NOTIFICATIONS:
+            # Determine catch type emoji
+            catch_emoji = "🐟"
+            if "treasure" in detector_name.lower():
+                catch_emoji = "💎"
+            elif "sunken" in detector_name.lower():
+                catch_emoji = "⚓"
+            elif "junk" in detector_name.lower():
+                catch_emoji = "🗑️"
+            elif "caught" in detector_name.lower():
+                catch_emoji = "🎣"
+            
+            # Calculate session duration
+            session_duration = time.time() - self.macro_start_time
+            session_minutes = int(session_duration // 60)
+            session_seconds = int(session_duration % 60)
+            
+            # Time since last meal
+            time_since_meal = time.time() - self.last_eat_time
+            meal_minutes = int(time_since_meal // 60)
+            meal_seconds = int(time_since_meal % 60)
+            
+            # Get catch breakdown by type
+            catch_breakdown = {}
+            for catch_name, conf, timestamp in self.catch_history:
+                catch_breakdown[catch_name] = catch_breakdown.get(catch_name, 0) + 1
+            
+            catch_breakdown_text = " | ".join([f"{name.title()}: {count}" for name, count in sorted(catch_breakdown.items())])
+            
+            embed = {
+                "title": f"{catch_emoji} Catch Detected!",
+                "description": f"**{detector_name.title()}** caught!",
+                "color": 5763719,  # Green color
+                "fields": [
+                    {
+                        "name": "🎯 Confidence",
+                        "value": f"{max_val:.1%}",
+                        "inline": True
+                    },
+                    {
+                        "name": "⏱️ Time Since Last Catch",
+                        "value": f"{time_since_last_catch:.1f}s ({check_counter} checks)",
+                        "inline": True
+                    },
+                    {
+                        "name": "📊 Total Catches",
+                        "value": f"{self.total_catches}",
+                        "inline": True
+                    },
+                    {
+                        "name": "🐟 Catch Breakdown",
+                        "value": catch_breakdown_text or "First catch!",
+                        "inline": False
+                    },
+                    {
+                        "name": "🕐 Session Duration",
+                        "value": f"{session_minutes}m {session_seconds}s",
+                        "inline": True
+                    },
+                    {
+                        "name": "🍖 Since Last Meal",
+                        "value": f"{meal_minutes}m {meal_seconds}s",
+                        "inline": True
+                    },
+                    {
+                        "name": "🎣 Clicks",
+                        "value": f"{self.click_count}",
+                        "inline": True
+                    }
+                ],
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+            }
+            
+            # Send notification with screenshot
+            if screenshot_saved and screenshot_path:
+                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+                
+                # Delete screenshot after sending to save storage (if enabled)
+                if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                    try:
+                        import os
+                        if os.path.exists(screenshot_path):
+                            os.remove(screenshot_path)
+                            print(f"[DISCORD] Screenshot deleted: {screenshot_path}")
+                    except Exception as e:
+                        print(f"[DISCORD] Failed to delete screenshot: {e}")
+            else:
+                # Send without screenshot if saving failed or disabled
+                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+    
+    def _send_threshold_warning(self, screenshot, highest_conf_name, highest_confidence, max_confidences, check_counter):
+        """Send threshold warning screenshot and notification (runs in background thread)"""
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        detector_name_clean = highest_conf_name.replace('.png', '')
+        screenshot_path = f"{SCREENSHOT_FOLDER}/no_threshold_{detector_name_clean}_{timestamp}_conf{highest_confidence:.2f}.png"
+        
+        try:
+            import os
+            os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+            cv2.imwrite(screenshot_path, screenshot)
+            
+            embed = {
+                "title": "⚠️ Detection Below Threshold",
+                "description": f"Highest confidence: **{highest_conf_name}** at {highest_confidence:.1%}",
+                "color": 16776960,  # Yellow color
+                "fields": [
+                    {
+                        "name": "🎯 All Confidences",
+                        "value": " | ".join([f"{name}: {conf:.1%}" for name, conf in max_confidences]),
+                        "inline": False
+                    },
+                    {
+                        "name": "🔍 Check Number",
+                        "value": str(check_counter),
+                        "inline": True
+                    }
+                ],
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+            }
+            
+            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+            
+            # Delete screenshot after sending
+            if DELETE_SCREENSHOTS_AFTER_DISCORD and os.path.exists(screenshot_path):
+                os.remove(screenshot_path)
+                
+        except Exception as e:
+            print(f"[DETECTION THREAD] Failed to send threshold warning: {e}")
+    
+    def _save_point_screenshot_and_notify(self, screenshot, point_location, reason="timeout_or_low_confidence"):
+        """Save point detection screenshot and send notification (runs in background thread)
+        
+        Args:
+            reason: Why screenshot is being sent - "timeout_or_low_confidence" or "fish_bite"
+        """
+        screenshot_saved = False
+        screenshot_path = None
+        
+        if SAVE_DETECTION_SCREENSHOTS:
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            screenshot_path = f"{SCREENSHOT_FOLDER}/point_{timestamp}_conf{point_location['confidence']:.2f}.png"
+            try:
+                import os
+                os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                cv2.imwrite(screenshot_path, screenshot)
+                screenshot_saved = True
+                if self.debug:
+                    print(f"[POINT DETECTION] 📸 Screenshot saved: {screenshot_path}")
+            except Exception as e:
+                if self.debug:
+                    print(f"[POINT DETECTION] Failed to save screenshot: {e}")
+        
+        # Send Discord notification for point detection (only if requested)
+        if ENABLE_DISCORD_NOTIFICATIONS and reason != "fish_bite":
+            # Determine title and color based on reason
+            if reason == "timeout_or_low_confidence":
+                title = "⚠️ Fishing Issue Detected"
+                description = "Fish caught below threshold OR max clicking duration reached"
+                color = 16776960  # Yellow
+            else:
+                title = "🎣 Fish Bite Detected!"
+                description = "Starting clicking sequence..."
+                color = 3447003  # Blue
+            
+            embed = {
+                "title": title,
+                "description": description,
+                "color": color,
+                "fields": [
+                    {
+                        "name": "🎯 Confidence",
+                        "value": f"{point_location['confidence']:.1%}",
+                        "inline": True
+                    },
+                    {
+                        "name": "📍 Location",
+                        "value": f"({point_location['x']}, {point_location['y']})",
+                        "inline": True
+                    },
+                    {
+                        "name": "🔢 Detection Count",
+                        "value": str(self.detection_count),
+                        "inline": True
+                    }
+                ],
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+            }
+            
+            if screenshot_saved and screenshot_path:
+                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+                
+                # Delete screenshot after sending
+                if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                    try:
+                        if os.path.exists(screenshot_path):
+                            os.remove(screenshot_path)
+                            if self.debug:
+                                print(f"[DISCORD] Screenshot deleted: {screenshot_path}")
+                    except Exception as e:
+                        if self.debug:
+                            print(f"[DISCORD] Failed to delete screenshot: {e}")
+            else:
+                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
     
     def eat_food(self):
         """Eat food - press 0, click 3 times, press 9, click once"""
@@ -800,36 +1065,9 @@ class FishingMacro:
             
             print(f"[EATING] Finished eating - next meal in {self.next_eat_interval}s")
             
-            # Send Discord notification about eating
+            # Send Discord notification about eating (in background thread)
             if ENABLE_DISCORD_NOTIFICATIONS:
-                duration_since_last_meal = time.time() - (self.last_eat_time - (self.last_eat_time - (time.time() - self.next_eat_interval)))
-                elapsed_minutes = int(duration_since_last_meal // 60)
-                elapsed_seconds = int(duration_since_last_meal % 60)
-                
-                embed = {
-                    "title": "🍖 Food Break!",
-                    "description": f"Eating session #{self.eat_count} completed (ate {self.eating_count} food items)",
-                    "color": 3447003,  # Blue color
-                    "fields": [
-                        {
-                            "name": "⏱️ Duration Since Last Meal",
-                            "value": f"{elapsed_minutes}m {elapsed_seconds}s",
-                            "inline": True
-                        },
-                        {
-                            "name": "⏰ Next Meal In",
-                            "value": f"{self.next_eat_interval // 60}m {self.next_eat_interval % 60}s",
-                            "inline": True
-                        },
-                        {
-                            "name": "📊 Total Catches",
-                            "value": f"{self.total_catches} fish",
-                            "inline": True
-                        }
-                    ],
-                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                }
-                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                threading.Thread(target=self._send_eating_notification, daemon=True).start()
             
         except Exception as e:
             print(f"[ERROR] Failed to eat food: {e}")
@@ -920,118 +1158,16 @@ class FishingMacro:
                             self.catch_history.append((detector_name, max_val, time.time()))
                             self.last_catch_time = time.time()  # Update last catch time
                             
-                            # SAVE SCREENSHOT when detection succeeds (if enabled)
-                            screenshot_saved = False
-                            screenshot_path = None
-                            
-                            if SAVE_DETECTION_SCREENSHOTS:
-                                timestamp = time.strftime("%Y%m%d_%H%M%S")
-                                detector_name_clean = img_name.split('/')[-1].replace('.png', '')
-                                screenshot_path = f"{SCREENSHOT_FOLDER}/detected_{detector_name_clean}_{timestamp}_conf{max_val:.2f}.png"
-                                
-                                try:
-                                    import os
-                                    os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
-                                    cv2.imwrite(screenshot_path, screenshot)
-                                    screenshot_saved = True
-                                    print(f"[DETECTION THREAD] 📸 Screenshot saved: {screenshot_path}")
-                                except Exception as e:
-                                    print(f"[DETECTION THREAD] Failed to save screenshot: {e}")
-                            
                             print(f"[DETECTION THREAD] ✓ Found {img_name}! Confidence: {max_val:.2f}")
                             print(f"[DETECTION THREAD] Detection took {elapsed:.2f}s with {check_counter} checks")
                             print(f"[DETECTION THREAD] Last check: capture={capture_time*1000:.0f}ms, detection={detection_time*1000:.0f}ms")
                             
-                            # Send Discord notification about the catch
-                            if ENABLE_DISCORD_NOTIFICATIONS:
-                                # Determine catch type emoji
-                                catch_emoji = "🐟"
-                                if "treasure" in detector_name.lower():
-                                    catch_emoji = "💎"
-                                elif "sunken" in detector_name.lower():
-                                    catch_emoji = "⚓"
-                                elif "junk" in detector_name.lower():
-                                    catch_emoji = "🗑️"
-                                elif "caught" in detector_name.lower():
-                                    catch_emoji = "🎣"
-                                
-                                # Calculate session duration
-                                session_duration = time.time() - self.macro_start_time
-                                session_minutes = int(session_duration // 60)
-                                session_seconds = int(session_duration % 60)
-                                
-                                # Time since last meal
-                                time_since_meal = time.time() - self.last_eat_time
-                                meal_minutes = int(time_since_meal // 60)
-                                meal_seconds = int(time_since_meal % 60)
-                                
-                                # Get catch breakdown by type
-                                catch_breakdown = {}
-                                for catch_name, conf, timestamp in self.catch_history:
-                                    catch_breakdown[catch_name] = catch_breakdown.get(catch_name, 0) + 1
-                                
-                                catch_breakdown_text = " | ".join([f"{name.title()}: {count}" for name, count in sorted(catch_breakdown.items())])
-                                
-                                embed = {
-                                    "title": f"{catch_emoji} Catch Detected!",
-                                    "description": f"**{detector_name.title()}** caught!",
-                                    "color": 5763719,  # Green color
-                                    "fields": [
-                                        {
-                                            "name": "🎯 Confidence",
-                                            "value": f"{max_val:.1%}",
-                                            "inline": True
-                                        },
-                                        {
-                                            "name": "⏱️ Time Since Last Catch",
-                                            "value": f"{time_since_last_catch:.1f}s ({check_counter} checks)",
-                                            "inline": True
-                                        },
-                                        {
-                                            "name": "📊 Total Catches",
-                                            "value": f"{self.total_catches}",
-                                            "inline": True
-                                        },
-                                        {
-                                            "name": "🐟 Catch Breakdown",
-                                            "value": catch_breakdown_text or "First catch!",
-                                            "inline": False
-                                        },
-                                        {
-                                            "name": "🕐 Session Duration",
-                                            "value": f"{session_minutes}m {session_seconds}s",
-                                            "inline": True
-                                        },
-                                        {
-                                            "name": "🍖 Since Last Meal",
-                                            "value": f"{meal_minutes}m {meal_seconds}s",
-                                            "inline": True
-                                        },
-                                        {
-                                            "name": "🎣 Clicks",
-                                            "value": f"{self.click_count}",
-                                            "inline": True
-                                        }
-                                    ],
-                                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                                }
-                                
-                                # Send notification with screenshot
-                                if screenshot_saved and screenshot_path:
-                                    send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
-                                    
-                                    # Delete screenshot after sending to save storage (if enabled)
-                                    if DELETE_SCREENSHOTS_AFTER_DISCORD:
-                                        try:
-                                            import os
-                                            if os.path.exists(screenshot_path):
-                                                os.remove(screenshot_path)
-                                                print(f"[DISCORD] Screenshot deleted: {screenshot_path}")
-                                        except Exception as e:
-                                            print(f"[DISCORD] Failed to delete screenshot: {e}")
-                                else:
-                                    # Send without screenshot if saving failed or disabled
-                                    send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                            # Start background thread for screenshot and notification
+                            threading.Thread(
+                                target=self._save_and_notify_catch,
+                                args=(screenshot, img_name, max_val, detector_name, time_since_last_catch, check_counter),
+                                daemon=True
+                            ).start()
                             
                             self.caught_flag.set()  # Signal main thread
                             self.detection_queue.put({
@@ -1039,7 +1175,8 @@ class FishingMacro:
                                 'image': img_name,
                                 'location': {'x': max_loc[0], 'y': max_loc[1], 'confidence': max_val},
                                 'checks': check_counter,
-                                'elapsed': elapsed
+                                'elapsed': elapsed,
+                                'confidence_met_threshold': True  # Flag indicating detection was successful
                             })
                             if self.debug:
                                 print(f"[DETECTION THREAD] Exiting after successful detection")
@@ -1064,43 +1201,14 @@ class FishingMacro:
                         print(f"[DETECTION CHECK #{check_counter}] Confidences: {conf_str}")
                     
                     # Send screenshot to Discord if no detector meets threshold (every 10 checks to avoid spam)
+                    # Run in background thread to avoid blocking detection
                     if check_counter % 10 == 0 and highest_confidence > 0 and ENABLE_DISCORD_NOTIFICATIONS:
-                        timestamp = time.strftime("%Y%m%d_%H%M%S")
-                        detector_name_clean = highest_conf_name.replace('.png', '')
-                        screenshot_path = f"{SCREENSHOT_FOLDER}/no_threshold_{detector_name_clean}_{timestamp}_conf{highest_confidence:.2f}.png"
-                        
-                        try:
-                            import os
-                            os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
-                            cv2.imwrite(screenshot_path, screenshot)
-                            
-                            embed = {
-                                "title": "⚠️ Detection Below Threshold",
-                                "description": f"Highest confidence: **{highest_conf_name}** at {highest_confidence:.1%}",
-                                "color": 16776960,  # Yellow color
-                                "fields": [
-                                    {
-                                        "name": "🎯 All Confidences",
-                                        "value": " | ".join([f"{name}: {conf:.1%}" for name, conf in max_confidences]),
-                                        "inline": False
-                                    },
-                                    {
-                                        "name": "🔍 Check Number",
-                                        "value": str(check_counter),
-                                        "inline": True
-                                    }
-                                ],
-                                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                            }
-                            
-                            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
-                            
-                            # Delete screenshot after sending
-                            if DELETE_SCREENSHOTS_AFTER_DISCORD and os.path.exists(screenshot_path):
-                                os.remove(screenshot_path)
-                                
-                        except Exception as e:
-                            print(f"[DETECTION THREAD] Failed to send threshold warning: {e}")
+                        # Start background thread with method call
+                        threading.Thread(
+                            target=self._send_threshold_warning,
+                            args=(screenshot, highest_conf_name, highest_confidence, max_confidences, check_counter),
+                            daemon=True
+                        ).start()
                     
                 else:
                     capture_errors += 1
@@ -1170,74 +1278,9 @@ class FishingMacro:
                 print(f"[DETECTED] Point found at ({point_location['x']}, {point_location['y']}) "
                       f"- Confidence: {point_location['confidence']:.2f}")
                 
-                # START BACKGROUND THREAD for screenshot & Discord notification
-                # This prevents blocking the auto-clicking sequence
-                def save_screenshot_and_notify():
-                    """Background thread to handle screenshot and Discord notification"""
-                    screenshot_saved = False
-                    screenshot_path = None
-                    
-                    if SAVE_DETECTION_SCREENSHOTS:
-                        timestamp = time.strftime("%Y%m%d_%H%M%S")
-                        screenshot_path = f"{SCREENSHOT_FOLDER}/point_{timestamp}_conf{point_location['confidence']:.2f}.png"
-                        try:
-                            import os
-                            os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
-                            cv2.imwrite(screenshot_path, screenshot)
-                            screenshot_saved = True
-                            if self.debug:
-                                print(f"[POINT DETECTION] 📸 Screenshot saved: {screenshot_path}")
-                        except Exception as e:
-                            if self.debug:
-                                print(f"[POINT DETECTION] Failed to save screenshot: {e}")
-                    
-                    # Send Discord notification for point detection
-                    if ENABLE_DISCORD_NOTIFICATIONS:
-                        embed = {
-                            "title": "🎣 Fish Bite Detected!",
-                            "description": "Starting clicking sequence...",
-                            "color": 3447003,  # Blue color
-                            "fields": [
-                                {
-                                    "name": "🎯 Confidence",
-                                    "value": f"{point_location['confidence']:.1%}",
-                                    "inline": True
-                                },
-                                {
-                                    "name": "📍 Location",
-                                    "value": f"({point_location['x']}, {point_location['y']})",
-                                    "inline": True
-                                },
-                                {
-                                    "name": "🔢 Detection Count",
-                                    "value": str(self.detection_count),
-                                    "inline": True
-                                }
-                            ],
-                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                        }
-                        
-                        if screenshot_saved and screenshot_path:
-                            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
-                            
-                            # Delete screenshot after sending
-                            if DELETE_SCREENSHOTS_AFTER_DISCORD:
-                                try:
-                                    if os.path.exists(screenshot_path):
-                                        os.remove(screenshot_path)
-                                        if self.debug:
-                                            print(f"[DISCORD] Screenshot deleted: {screenshot_path}")
-                                except Exception as e:
-                                    if self.debug:
-                                        print(f"[DISCORD] Failed to delete screenshot: {e}")
-                        else:
-                            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
-                
-                # Start screenshot/notification thread - don't wait for it!
-                notification_thread = threading.Thread(target=save_screenshot_and_notify, daemon=True)
-                notification_thread.start()
-                if self.debug:
-                    print("[DEBUG] Screenshot/notification thread started in background - proceeding to click immediately")
+                # Save screenshot for later (in case we need to send it due to timeout or low confidence)
+                screenshot_for_notification = screenshot.copy()
+                point_location_for_notification = point_location.copy()
                 
                 # Get window center for clicking - we'll click at center instead of point location
                 _, _, w, h = self.window_capture.get_window_rect()
@@ -1300,6 +1343,16 @@ class FishingMacro:
                                 print(f"[CAUGHT] Detection stats: {detection_result['checks']} checks in {detection_result['elapsed']:.2f}s")
                                 self.fish_just_caught = True
                                 
+                                # Check if detection confidence met threshold
+                                if not detection_result.get('confidence_met_threshold', False):
+                                    # Detection was below threshold - send screenshot
+                                    print(f"[CAUGHT] Detection below threshold - sending screenshot to Discord")
+                                    threading.Thread(
+                                        target=self._save_point_screenshot_and_notify,
+                                        args=(screenshot_for_notification, point_location_for_notification, "timeout_or_low_confidence"),
+                                        daemon=True
+                                    ).start()
+                                
                                 if previous_window:
                                     time.sleep(0.2)
                                     self.window_capture.restore_window(previous_window)
@@ -1335,6 +1388,15 @@ class FishingMacro:
                             print(f"[{MAX_CLICKING_DURATION}s TIMEOUT] Stopped clicking after {MAX_CLICKING_DURATION} seconds ({clicks_in_loop} clicks)")
                             print(f"[{MAX_CLICKING_DURATION}s TIMEOUT] Background detection performed {self.detection_check_count} checks")
                             self.fish_just_caught = True  # Assume fish was caught
+                            
+                            # Send screenshot and notification since we hit timeout (fish detection failed)
+                            print(f"[{MAX_CLICKING_DURATION}s TIMEOUT] Sending screenshot to Discord - detection may have failed")
+                            threading.Thread(
+                                target=self._save_point_screenshot_and_notify,
+                                args=(screenshot_for_notification, point_location_for_notification, "timeout_or_low_confidence"),
+                                daemon=True
+                            ).start()
+                            
                             # Restore previous window after timeout
                             if previous_window:
                                 time.sleep(0.2)
@@ -1440,7 +1502,8 @@ class FishingMacro:
                 time_since_last_detection = time.time() - self.last_detection_time
                 
                 if time_since_last_detection > self.no_detection_timeout:
-                    print(f"[AUTO-CAST] No detection for {self.no_detection_timeout}s. Casting rod...")
+                    self.auto_cast_count += 1
+                    print(f"[AUTO-CAST] No detection for {self.no_detection_timeout}s. Casting rod... (Auto-cast #{self.auto_cast_count})")
                     
                     # Click center of screen to cast
                     _, _, w, h = self.window_capture.get_window_rect()
@@ -1453,6 +1516,53 @@ class FishingMacro:
                     self.window_capture.send_click(center_x, center_y, debug=self.debug)
                     self.click_count += 1
                     self.last_detection_time = time.time()
+                    
+                    # Send Discord notification about auto-cast
+                    if ENABLE_DISCORD_NOTIFICATIONS:
+                        # Calculate session duration
+                        session_duration = time.time() - self.macro_start_time
+                        session_minutes = int(session_duration // 60)
+                        session_seconds = int(session_duration % 60)
+                        
+                        embed = {
+                            "title": "🎣 Auto-Cast Triggered",
+                            "description": f"No fish bite detected for {self.no_detection_timeout}s - automatically re-casting rod",
+                            "color": 16744272,  # Orange color
+                            "fields": [
+                                {
+                                    "name": "🔄 Auto-Cast Count",
+                                    "value": f"{self.auto_cast_count}",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "⏱️ Time Since Last Detection",
+                                    "value": f"{time_since_last_detection:.1f}s",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "🕐 Session Duration",
+                                    "value": f"{session_minutes}m {session_seconds}s",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "📊 Total Catches",
+                                    "value": f"{self.total_catches}",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "🎯 Total Detections",
+                                    "value": f"{self.detection_count}",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "🖱️ Total Clicks",
+                                    "value": f"{self.click_count}",
+                                    "inline": True
+                                }
+                            ],
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                        }
+                        send_discord_notification_async(DISCORD_WEBHOOK_URL, "", embed)
             
             # Status update
             remaining_time = int(self.end_time - time.time())
@@ -1581,7 +1691,8 @@ def main():
                 ],
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
-            send_discord_notification(DISCORD_WEBHOOK_URL, "🚀 Bot Starting...", embed)
+            # Send in background thread to avoid startup delay
+            send_discord_notification_async(DISCORD_WEBHOOK_URL, "🚀 Bot Starting...", embed)
         
         macro.run()
         
@@ -1626,7 +1737,8 @@ def main():
                 ],
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
-            send_discord_notification(DISCORD_WEBHOOK_URL, "✅ Session Finished!", embed)
+            # Send in background thread - no need to wait for completion notification
+            send_discord_notification_async(DISCORD_WEBHOOK_URL, "✅ Session Finished!", embed)
         
     except KeyboardInterrupt:
         print("\n[INTERRUPTED] Ctrl+C detected")
