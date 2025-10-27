@@ -1,6 +1,27 @@
 # Roblox Arcane Odyssey - Background Fishing Macro
 
-A sophisticated fishing automation script for Roblox Arcane Odyssey that works even when the game window is in the background. Features automatic fishing, hunger management, and emergency stop capabilities.
+A sophisticated fishing automation script for Roblox Arcane Odyssey that works even when the game window is in the background. Features automatic fishing, hunger management, Discord notifications with screenshots, and emergency stop capabilities.
+
+---
+
+## 🎯 CRITICAL: RESOLUTION-DEPENDENT DETECTION
+
+### ⚠️ **IMAGE DETECTION ACCURACY DEPENDS HEAVILY ON YOUR MONITOR RESOLUTION**
+
+**THIS IS THE #1 REASON WHY THE MACRO MAY NOT WORK FOR YOU!**
+
+The provided detection images (`point.png`, `fish.png`, etc.) were taken at a **specific game resolution and graphics settings**. If your game runs at a **different resolution**, the template matching will have **poor accuracy** or **fail completely**.
+
+**Why this matters:**
+- Template matching compares pixel patterns
+- Different resolutions = different pixel patterns
+- Even small resolution differences can cause mismatches
+- Graphics settings (quality, brightness) also affect matching
+
+**SOLUTION:**
+1. **TEST FIRST** with the provided images
+2. **If detection fails**, you **MUST** retake screenshots at **YOUR** resolution
+3. See the [Detection Images Setup](#detection-images-setup) section below
 
 ---
 
@@ -113,90 +134,441 @@ According to rule 2.3.1, you **MUST**:
 
 3. **Run the installation script:**
    ```powershell
-   .\scripts\install.bat
+   cd scripts
+   .\install.bat
    ```
-   
-   This will:
-   - Create a Python virtual environment (`.venv`)
-   - Install all required dependencies
-   - Set up the project automatically
 
-   **Alternative manual installation:**
+   Or install manually:
    ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
    ```
 
-### Step 2: Prepare Detection Images
+### Step 2: Configuration
 
-**📦 INCLUDED:** Example detection images are already provided in this repository!
-- `assets/images/detection/` folder contains all detection images:
-  - `point.png` - Fishing bite indicator (REQUIRED)
-  - `fish.png` - Regular fish caught indicator
-  - `junk.png` - Junk caught indicator
-  - `treasure.png` - Treasure caught indicator
-  - `sunken.png` - Sunken item caught indicator
-  - `hunger.png` - Hunger bar indicator (optional)
+**Option A: Quick Setup (Recommended)**
+```powershell
+python setup_wizard.py
+```
 
-**⚠️ IMPORTANT:** These are example images and may not work perfectly for your game resolution or settings. You may need to create your own screenshots for best results.
+The wizard will guide you through:
+- Discord webhook setup (optional)
+- Detection sensitivity configuration
+- Eating schedule defaults
+- Screenshot settings
 
-#### How to Create Your Own Detection Images:
+**Option B: Manual Configuration**
+1. Copy the example config:
+   ```powershell
+   copy config.example.py config.py
+   ```
 
-#### Required Images:
+2. Edit `config.py` with your settings:
+   - Discord webhook URL (if you want notifications)
+   - Detection confidence thresholds
+   - Timing and safety settings
+   - Inventory slot keys
 
-1. **`assets/images/detection/point.png`** - The fishing bite indicator
-   - When a fish bites, a small indicator appears on screen
-   - Take a screenshot of JUST that indicator
-   - Save it as `assets/images/detection/point.png` in the project folder (replace existing)
-   - **This is REQUIRED** for the macro to work
+**⚠️ IMPORTANT:** Your `config.py` file contains your Discord webhook URL and will NOT be committed to git (it's in .gitignore).
 
-#### Optional Images:
+### Step 3: Detection Images Setup
 
-2. **`assets/images/detection/hunger.png`** - Low hunger bar indicator (OPTIONAL)
-   - ⚠️ **NOTE:** Random eating is now enabled by default (every 60-120 seconds)
-   - This image is no longer required unless you want hunger-based eating
-   - Take a screenshot of your hunger bar when it's at ≤35%
-   - Save it as `assets/images/detection/hunger.png` in the project folder (replace existing)
+**⚠️ CRITICAL: Resolution-Dependent Detection**
 
-3. **Caught indicators** - Fish/treasure/junk caught indicators (OPTIONAL)
-   - Screenshot of the "fish caught" message or visual indicators
-   - Save in `assets/images/detection/` folder (e.g., `fish.png`, `treasure.png`)
-   - Helps detect when fish is caught
-   - Macro will work without this (uses timeout instead)
+The provided detection images may NOT work for your monitor resolution!
 
-#### How to Take Screenshots:
+#### Test First:
+1. Try running the macro with provided images
+2. Watch if it detects fishing bites correctly
+3. If it fails or has low accuracy, proceed to create your own
 
-1. Open Roblox Arcane Odyssey
-2. Use Windows **Snipping Tool** (Win + Shift + S)
-3. Capture the specific indicator you want
-4. Save with exact filename in project folder
+#### Create Your Own Detection Images:
 
-**Example file structure:**
+**REQUIRED: Fishing Bite Indicator (`point.png`)**
+
+1. Launch Roblox Arcane Odyssey at YOUR normal resolution
+2. Start fishing and wait for a bite
+3. When the bite indicator appears:
+   - Press **Print Screen** (default Roblox screenshot button)
+   - Roblox will save a screenshot to your Pictures folder
+   - Open the screenshot in an image editor (Paint, Photoshop, etc.)
+   - **Crop ONLY the bite indicator** from the screenshot
+4. Save the cropped image as: `assets/images/detection/point.png`
+5. **This is REQUIRED** - without it, the macro won't work
+
+**OPTIONAL: Caught Indicators**
+
+For better detection speed, capture these the same way:
+1. Fish caught screen → crop and save as `fish_arcane_odyssey.png`
+2. Treasure caught → crop and save as `treasure_arcane_odyssey.png`
+3. Sunken item → crop and save as `sunken_arcane_odyssey.png`
+4. Junk caught → crop and save as `junk_arcane_odyssey.png`
+
+**Tips for best results:**
+- Always use **Print Screen** in Roblox for consistent quality
+- Use consistent resolution (don't change game window size)
+- Use same graphics settings when playing
+- Crop carefully - include ONLY the indicator, not extra background
+- Make sure the cropped image is clear and not blurry
+- Adjust confidence values in config.py if needed (0.55-0.75)
+
+### Step 4: In-Game Setup
+
+1. **Launch Roblox Arcane Odyssey**
+2. **Equip your fishing rod** in slot **9** (or change `ROD_SLOT_KEY` in config.py)
+3. **Put food items** in slot **0** (or change `FOOD_SLOT_KEY` in config.py)
+4. **Stand at your fishing location**
+5. **Cast your fishing rod** once to start
+6. Keep the window title as **"Roblox"** (default, or change `WINDOW_NAME` in config.py)
+
+### Step 5: Run the Macro
+
+1. **Open PowerShell as Administrator** (right-click → "Run as administrator")
+   - ⚠️ Administrator required for input blocking to work
+
+2. **Navigate to project folder:**
+   ```powershell
+   cd c:\path\to\roblox-arcane-odyssey-macro-fishing
+   ```
+
+3. **Run the macro:**
+   ```powershell
+   python background_fishing_macro.py
+   ```
+
+4. **Follow the prompts:**
+   - Enter duration in seconds (e.g., 3600 for 1 hour)
+   - Enter eating interval (or press Enter for default from config)
+   - Enter eating count (or press Enter for default from config)
+   - Enable debug mode (y/n) - shows detailed information
+
+5. **🚨 EMERGENCY STOP:** Press **Ctrl+Alt+M** anytime to stop immediately
+
+---
+
+## ✨ Features
+
+### Core Features
+- ✅ **Background Operation** - Captures window even when not in focus
+- ✅ **Configurable Settings** - Easy config.py file for all settings
+- ✅ **Smart Click Detection** - Detects fishing bite indicator and clicks automatically
+- ✅ **High-Speed Clicking** - Configurable click speed (default: 1000 clicks/sec theoretical max)
+- ✅ **Auto-Casting** - Recasts fishing rod after configured timeout (default: 60s)
+- ✅ **Input Blocking** - Blocks your keyboard/mouse during fishing to prevent interference
+- ✅ **Safety Timeouts** - Configurable safety unblock (default: 90s)
+- ✅ **Emergency Stop** - Press Ctrl+Alt+M to stop immediately and unblock input
+- ✅ **Mouse Position Restoration** - Returns mouse to original position after fishing
+
+### Eating System
+- ✅ **User-Configurable Schedule** - Set eating interval and count
+- ✅ **Smart Eating Logic** - Doesn't eat while actively fishing
+- ✅ **Auto Re-equip** - Automatically re-equips fishing rod after eating
+- ✅ **Configurable Slots** - Change food/rod slots in config.py
+
+### Discord Integration
+- ✅ **Catch Notifications** - Get notified on Discord when fish are caught
+- ✅ **Screenshot Attachments** - Sends actual game screenshot with notification
+- ✅ **Catch Statistics** - Shows total catches, catch breakdown by type
+- ✅ **Session Info** - Displays session duration, time since last meal, clicks
+- ✅ **Auto-cleanup** - Optionally deletes screenshots after sending to save storage
+
+### Safety Features
+- ✅ **Configurable Safety Timeout** - Force-unblocks input after configured time (default: 90s)
+- ✅ **Configurable Click Timeout** - Stops clicking after configured duration (default: 20s)
+- ✅ **Input Unblocking** - Always unblocks input even if script crashes
+- ✅ **Window Restoration** - Returns focus to your previous window after actions
+- ✅ **Mouse Position Restore** - Returns cursor to original position
+- ✅ **Emergency Stop** - Works even when input is blocked (requires admin)
+- ✅ **Try-Finally Blocks** - Ensures cleanup always happens
+
+### Advanced Features
+- ✅ **Template Matching** - OpenCV-based image detection
+- ✅ **Adjustable Confidence** - Configure detection sensitivity in config.py
+- ✅ **Multiple Catch Types** - Detects fish, treasure, sunken items, junk separately
+- ✅ **Parallel Detection** - Separate thread for detection while clicking
+- ✅ **Resolution-Independent** - Works with custom screenshots at any resolution
+- ✅ **Setup Wizard** - Interactive configuration tool for first-time setup
+
+---
+
+## ⚙️ Configuration
+
+### Configuration File (`config.py`)
+
+All settings are in `config.py`. Copy from `config.example.py` to get started.
+
+#### Discord Settings
+```python
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
+ENABLE_DISCORD_NOTIFICATIONS = True
+```
+
+#### Detection Settings
+```python
+# ⚠️ Adjust these if detection is not working!
+POINT_CONFIDENCE = 0.65  # Lower = more sensitive (0.55-0.75)
+FISH_CONFIDENCE = 0.75   # Caught fish detection
+```
+
+#### Timing Settings
+```python
+MAX_CLICKING_DURATION = 20  # Stop after 20s of clicking
+NO_DETECTION_TIMEOUT = 60   # Auto-cast after 60s
+CLICK_DELAY = 0.001         # Click speed (1ms between clicks)
+```
+
+#### Eating Settings
+```python
+DEFAULT_EATING_INTERVAL = 300  # Default: eat every 5 minutes
+DEFAULT_EATING_COUNT = 3       # Default: eat 3 times per session
+FOOD_SLOT_KEY = 0x30          # Slot 0 for food
+ROD_SLOT_KEY = 0x39           # Slot 9 for rod
+```
+
+#### Safety Settings
+```python
+CRITICAL_SAFETY_TIMEOUT = 90  # Force unblock after 90s
+```
+
+#### Screenshot Settings
+```python
+SAVE_DETECTION_SCREENSHOTS = True   # Save screenshots
+DELETE_SCREENSHOTS_AFTER_DISCORD = True  # Delete after sending
+```
+
+### Adjusting Detection Sensitivity
+
+If the macro is:
+- **Missing fish bites** → Lower `POINT_CONFIDENCE` (try 0.55 or 0.60)
+- **Too many false positives** → Raise `POINT_CONFIDENCE` (try 0.75 or 0.80)
+- **Not detecting catches** → Lower `FISH_CONFIDENCE`, `TREASURE_CONFIDENCE`, etc.
+
+**Most common issue:** Detection images don't match your resolution → Retake screenshots!
+
+---
+
+## 📊 How It Works
+
+### Detection System
+
+1. **Template Matching** - Uses OpenCV to compare game screenshots with your detection images
+2. **Confidence Threshold** - Only triggers when similarity exceeds configured threshold
+3. **Resolution Dependent** - Works best with screenshots taken at YOUR resolution using Roblox's Print Screen
+4. **Multiple Detectors** - Supports different catch types (fish, treasure, sunken, junk, etc.)
+
+### Why Resolution Matters
+
+- Template matching compares pixel patterns
+- Different resolutions = different pixel sizes and arrangements
+- A 1920x1080 screenshot won't match well at 1280x720
+- Even UI scaling affects detection accuracy
+
+**Solution:** Always use Roblox's **Print Screen** feature to capture screenshots, then crop them to show only the indicators!
+
+### Clicking System
+
+1. Detects fishing bite indicator (`point.png`)
+2. Starts separate detection thread
+3. Clicks rapidly at center of screen (configurable speed)
+4. Detection thread watches for caught visual in background (fish, treasure, sunken, junk)
+5. Stops when caught detected or timeout reached
+
+---
+
+## 🔧 Troubleshooting
+
+### "Window 'Roblox' not found"
+- Make sure Roblox is running
+- Check window title matches `WINDOW_NAME` in config.py
+- Change `WINDOW_NAME` if your window has different title
+
+### "Template image not found"
+- Make sure `assets/images/detection/point.png` exists
+- Run from project root directory
+- Check file paths in `DETECTION_IMAGES` config
+
+### Detection not working / Low accuracy
+**This is the #1 issue!**
+
+1. **Resolution mismatch** - Provided images don't match your resolution
+   - Solution: Use Roblox's **Print Screen** to capture screenshots, then crop ONLY the indicators
+   
+2. **Wrong screenshot method** - Used Windows Snipping Tool instead of Roblox's Print Screen
+   - Solution: Always use **Print Screen** in Roblox for consistent quality
+   
+3. **Graphics settings** - Different brightness/quality affects matching
+   - Solution: Use consistent graphics settings
+   
+4. **Confidence too high** - Threshold set too strict
+   - Solution: Lower `POINT_CONFIDENCE` to 0.55-0.60
+   
+5. **Screenshot quality** - Captured indicator is too small/blurry
+   - Solution: Crop carefully - include ONLY the indicator, not extra background
+
+### Input blocking doesn't work
+- **Must run PowerShell as Administrator**
+- Required for `BlockInput` API to work
+- Right-click PowerShell → "Run as administrator"
+
+### Fish escaping before caught
+- Already optimized (20s max clicking by default)
+- Increase `MAX_CLICKING_DURATION` in config.py if needed
+- Check detection images are correct for your resolution
+
+### Discord notifications not working
+- Verify webhook URL is correct in config.py
+- Check webhook hasn't been deleted in Discord
+- Test webhook manually with curl or browser
+
+### Emergency stop not responding
+- Must run as Administrator for keyboard hook to work
+- Hook bypasses `BlockInput` but needs admin privileges
+- Alternative: Close PowerShell window (input will unblock)
+
+---
+
+## 📝 File Structure
+
 ```
 roblox-arcane-odyssey-macro-fishing/
-├── background_fishing_macro.py    ← Main script
-├── requirements.txt
-├── README.md
-├── assets/                         ← All assets organized here
+├── background_fishing_macro.py    # Main script
+├── config.example.py              # Example configuration (INCLUDED IN GIT)
+├── config.py                      # Your configuration (IGNORED BY GIT)
+├── setup_wizard.py                # Interactive setup tool
+├── requirements.txt               # Python dependencies
+├── README.md                      # This file
+├── .gitignore                     # Git ignore rules
+├── assets/
 │   ├── images/
-│   │   └── detection/              ← Detection images
-│   │       ├── point.png           ← Fishing bite indicator (REQUIRED)
-│   │       ├── fish.png            ← Fish caught indicator
-│   │       ├── junk.png            ← Junk caught indicator
-│   │       ├── treasure.png        ← Treasure caught indicator
-│   │       ├── sunken.png          ← Sunken item caught indicator
-│   │       └── hunger.png          ← Hunger bar indicator (optional)
-│   └── screenshots/                ← Documentation screenshots
-│       ├── ingame_ban_table.png
-│       └── macroing_rule.png
-├── docs/                           ← Documentation files
-│   ├── ANSWER_BACKGROUND_INPUT.md
-│   ├── INPUT_METHODS_REFERENCE.md
-│   └── VALIDATION_RESULTS.md
-├── scripts/                        ← Installation and utility scripts
-│   └── install.bat
-└── tests/                          ← Test files
+│   │   └── detection/             # Detection templates
+│   │       ├── point.png          # Fishing bite (REQUIRED)
+│   │       ├── fish_arcane_odyssey.png
+│   │       ├── treasure_arcane_odyssey.png
+│   │       ├── sunken_arcane_odyssey.png
+│   │       ├── junk_arcane_odyssey.png
+│   │       └── caught_arcane_odyssey.png
+│   └── screenshots/               # Runtime screenshots (auto-deleted)
+│       └── .gitkeep
+├── scripts/
+│   └── install.bat                # Installation script
+└── docs/                          # Additional documentation
+```
+
+---
+
+## 🎓 For Developers / Contributors
+
+### Setting Up Development Environment
+
+```powershell
+# Clone repository
+git clone https://github.com/Naxumi/roblox-arcane-odyssey-macro-fishing.git
+cd roblox-arcane-odyssey-macro-fishing
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Create your config
+copy config.example.py config.py
+# Edit config.py with your settings
+
+# Run
+python background_fishing_macro.py
+```
+
+### Important Notes
+
+- **Never commit `config.py`** - It contains personal webhook URLs
+- **config.example.py is the template** - This goes in git
+- Users copy example to create their own config.py
+- Screenshots folder is gitignored except .gitkeep
+
+### Configuration System
+
+- All settings centralized in `config.py`
+- Import at top of main script
+- Fallback to defaults if config.py missing
+- Setup wizard creates/updates config.py
+
+---
+
+## ❓ FAQ
+
+**Q: Why isn't the macro detecting fish bites?**
+A: **#1 reason: Resolution mismatch!** Use Roblox's **Print Screen** button to capture a screenshot, then crop ONLY the bite indicator and save as `point.png`.
+
+**Q: Do the provided detection images work for everyone?**
+A: No! They only work if your game runs at the same resolution they were captured at. Most users need to retake screenshots using Roblox's Print Screen.
+
+**Q: Should I use Windows Snipping Tool or Roblox's Print Screen?**
+A: Always use Roblox's **Print Screen** button! This ensures consistent quality and resolution. Then crop the screenshot to show only the indicator.
+
+**Q: How do I know what resolution to use?**
+A: Use whatever resolution you normally play at. Take screenshots while playing using Print Screen, don't change resolution.
+
+**Q: Can I use this in the background?**
+A: Yes! The macro captures the window even when it's not focused. However, you must stay at your computer per game rules.
+
+**Q: Will I get banned?**
+A: Yes, this violates game rules. First offense = 3-day ban + 2 strikes. See ban risks section above.
+
+**Q: Can I run this on multiple accounts?**
+A: Alt accounts used exclusively for macroing = permanent ban per game rules.
+
+**Q: How do I change which inventory slots are used?**
+A: Edit `FOOD_SLOT_KEY` and `ROD_SLOT_KEY` in config.py. Key codes: 0x30=slot 0, 0x31=slot 1, ..., 0x39=slot 9.
+
+**Q: Can I disable Discord notifications?**
+A: Yes, set `ENABLE_DISCORD_NOTIFICATIONS = False` in config.py.
+
+**Q: Can I disable screenshots?**
+A: Yes, set `SAVE_DETECTION_SCREENSHOTS = False` in config.py.
+
+**Q: How do I stop the macro?**
+A: Press Ctrl+Alt+M (emergency stop) or close the PowerShell window.
+
+---
+
+## 📜 License
+
+This project is for **educational purposes only**. Use at your own risk.
+
+By using this software, you acknowledge:
+- You understand this violates Roblox Terms of Service
+- You understand this violates Arcane Odyssey game rules
+- You accept full responsibility for any consequences
+- The authors are not responsible for any bans or penalties
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+**Never commit:**
+- Personal `config.py` files
+- Discord webhook URLs
+- Runtime screenshots
+- Personal game data
+
+---
+
+## 📞 Support
+
+- **Issues:** Open an issue on GitHub
+- **Documentation:** Read this README and docs/ folder
+- **Setup Help:** Run `python setup_wizard.py`
+- **Detection Problems:** 99% of the time it's resolution mismatch - retake screenshots!
+
+---
+
+**🎣 Happy Fishing! (Responsibly and at your own risk)**
+
+Remember: This is an educational project demonstrating AI-assisted development and computer vision techniques. Always follow game rules and use responsibly.
     ├── test_all_input_methods.py
     ├── visual_input_test.py
     └── background_input_examples.py
@@ -299,16 +671,16 @@ roblox-arcane-odyssey-macro-fishing/
         ↓
 8. Unblock Input (max 90s) ──────────────> Critical safety timeout 🔓
         ↓
-9. Restore Mouse Position ───────────────> Back to original spot �️
+9. Restore Mouse Position ───────────────> Back to original spot 🖱️
         ↓
 10. Restore Previous Window ─────────────> Back to what you were doing ✅
         ↓
-11. Check if time to eat ────────────────> Random 60-120s interval 🍖
+11. Check if time to eat ────────────────> User-configured interval 🍖
         ↓
 12. Repeat from step 1
 ```
 
-### The Eating Cycle (Every 60-120 seconds)
+### The Eating Cycle (User-Configured Interval)
 
 ```
 1. Check Timer ───────────────────────────> Time elapsed? ⏱️
@@ -317,71 +689,56 @@ roblox-arcane-odyssey-macro-fishing/
         ↓
 3. Focus Window ──────────────────────────> Required for keypresses ⚠️
         ↓
-4. Press '0' key ─────────────────────────> Select food slot 🍖
+4. Press configured food key ────────────> Select food slot (default: '0') 🍖
         ↓
 5. Click 3 times (0.8s delay each) ───────> Consume 3 food items
         ↓
 6. Wait 1 second ─────────────────────────> Let animation finish
         ↓
-7. Press '9' key ─────────────────────────> Select fishing rod 🎣
+7. Press configured rod key ──────────────> Select fishing rod (default: '9') 🎣
         ↓
 8. Click once ────────────────────────────> Cast rod
         ↓
 9. Unblock Input ─────────────────────────> Restore control 🔓
         ↓
-10. Schedule Next Meal ───────────────────> Random 60-120s later
+10. Schedule Next Meal ───────────────────> Based on config interval
 ```
 
 ---
 
-## ⚙️ Configuration
+## 🎓 For Developers
 
-### Basic Settings
+### Catch Type Detection
 
-Edit these in `background_fishing_macro.py`:
-
-```python
-# Detection confidence (0.0 - 1.0)
-point_detector = ImageDetector('assets/images/detection/point.png', confidence=0.55)
-
-# Auto-cast timeout (seconds)
-no_detection_timeout = 70
-
-# Eating interval (seconds)
-next_eat_interval = random.randint(60, 120)  # Random between 1-2 minutes
-```
-
-### Advanced Settings
+The macro detects multiple catch types based on configuration in `config.py`:
 
 ```python
-# Click patterns (optimized for rare/golden/massive fish)
-# First 150 clicks: 0.012s delay = ~83 clicks/second
-# After 150 clicks: 0.015s delay = ~66 clicks/second
-
-# Caught detection images (in assets/images/detection/ folder)
-caught_images = [
-    ('assets/images/detection/fish.png', 0.35),      # Regular fish caught indicator
-    ('assets/images/detection/treasure.png', 0.35),  # Treasure chest caught indicator
-    ('assets/images/detection/sunken.png', 0.35),    # Sunken item caught indicator
-    ('assets/images/detection/junk.png', 0.35),      # Junk caught indicator
+# Catch type detectors (loaded from DETECTION_IMAGES dict)
+detector_configs = [
+    ('fish', FISH_CONFIDENCE),           # Regular fish
+    ('treasure', TREASURE_CONFIDENCE),   # Treasure chests
+    ('sunken', SUNKEN_CONFIDENCE),       # Sunken items
+    ('junk', JUNK_CONFIDENCE),           # Junk items
+    ('caught', CAUGHT_CONFIDENCE),       # Generic caught screen
 ]
-
-# Maximum clicking duration with safety timeouts
-if click_duration > 40:   # Normal timeout (40 seconds)
-    break
-if click_duration > 84:   # Safety timeout (84 seconds)
-    break
-if input_block_duration > 90:  # CRITICAL force-unblock (90 seconds)
-    force_unblock_and_exit()
-
-# Minimum clicks guarantee (handles rare fish)
-if clicks_in_loop < 150:  # Always do at least 150 clicks
-    continue
-
-# All clicks happen at screen center
-center_x = w // 2
-center_y = h // 2
 ```
+
+Each catch type has:
+- Dedicated detection image (e.g., `fish_arcane_odyssey.png`)
+- Configurable confidence threshold
+- Optional (macro works without them)
+
+### Configuration System
+
+All settings are externalized to `config.py`:
+- Discord webhook settings
+- Detection confidence thresholds
+- Timing parameters (click duration, timeouts)
+- Eating schedule defaults
+- Inventory slot key codes
+- Screenshot preferences
+
+See `config.example.py` for all available options.
 
 ---
 
@@ -390,13 +747,13 @@ center_y = h // 2
 For the macro to work properly, set up your inventory:
 
 - **Slot 0:** Food items (any food for hunger)
-- **Slot 9:** Fishing rod
+- **Slot 9:** Fishing rod (or change `ROD_SLOT_KEY` in config.py)
 - **Other slots:** Whatever you want
 
 The macro will:
-1. Press **'0'** to select food
+1. Press configured food key (default: **'0'**)
 2. Click **3 times** to consume food
-3. Press **'9'** to re-equip fishing rod
+3. Press configured rod key (default: **'9'**)
 4. Click **once** to cast
 
 ---
@@ -409,14 +766,15 @@ The macro will:
 **Problem:** Script can't find Roblox window
 **Solutions:**
 - Make sure Roblox is running
-- Check window title is exactly "Roblox"
+- Check window title is exactly "Roblox" (or change `WINDOW_NAME` in config.py)
 - Try running in-game (not in menu)
 
 #### "Template image not found: assets/images/detection/point.png"
 **Problem:** Missing required screenshot
 **Solutions:**
-- Create `assets/images/detection/point.png` screenshot of fishing bite indicator
-- Place in the `assets/images/detection/` folder
+- Use Roblox's **Print Screen** to capture a screenshot
+- Crop ONLY the fishing bite indicator
+- Save as `assets/images/detection/point.png`
 - Check filename is exact (case-sensitive)
 
 #### "Failed to capture window"
@@ -433,20 +791,21 @@ The macro will:
 - Input blocking requires admin privileges
 - Emergency stop still works regardless
 
-#### Keypresses not working (0 and 9)
+#### Keypresses not working
 **Problem:** Food/rod not selected
 **Solutions:**
 - Script must briefly focus window (this is normal)
-- Make sure slots 0 and 9 have items
-- Check items are actually in those slots
+- Make sure slots have items (default: slot 0 for food, slot 9 for rod)
+- Check `FOOD_SLOT_KEY` and `ROD_SLOT_KEY` in config.py
 - Debug mode shows if keys are being pressed
 
 #### No detections / Not clicking
 **Problem:** Macro doesn't detect fishing indicator
 **Solutions:**
-- Lower confidence: `confidence=0.4` instead of `0.55`
-- Retake `assets/images/detection/point.png` at current resolution
-- Enable debug mode to see detection confidence
+- Use Roblox's **Print Screen** to capture screenshots at YOUR resolution
+- Crop carefully - ONLY the indicator, not extra background
+- Lower `POINT_CONFIDENCE` in config.py (try 0.55-0.60)
+- Enable debug mode to see detection confidence scores
 - Make sure fish are actually biting
 
 ---
@@ -455,11 +814,10 @@ The macro will:
 
 ### Debug Mode
 
-Enable debug mode for detailed logging:
+Enable debug mode for detailed logging when running the macro. You'll be prompted:
 
-```powershell
-python background_fishing_macro.py
-# When prompted for debug mode, enter: y
+```
+Enable debug mode? (y/n): y
 ```
 
 Debug output shows:
@@ -469,26 +827,23 @@ Debug output shows:
 - Key press confirmations
 - Input blocking status
 - Eating schedule timing
+- Catch type detection details
 
-### Multiple Detection Images
+### Multiple Catch Type Detection
 
-The macro supports multiple "caught" indicators. Example images are provided in the `assets/images/detection/` folder:
+The macro automatically detects multiple catch types based on your `config.py`:
 
-```python
-caught_images = [
-    ('assets/images/detection/fish.png', 0.35),      # Regular fish caught
-    ('assets/images/detection/treasure.png', 0.35),  # Treasure chest caught
-    ('assets/images/detection/sunken.png', 0.35),    # Sunken item caught
-    ('assets/images/detection/junk.png', 0.35),      # Junk caught
-]
-```
+- **Fish** - Regular fish catches
+- **Treasure** - Treasure chests
+- **Sunken** - Sunken items
+- **Junk** - Junk items
+- **Caught** - Generic caught screen (fallback)
 
-You can add more images for different catch types:
-- Regular fish
-- Treasure chests
-- Sunken items
-- Junk items
-- Special catches
+Each type:
+- Has its own detection image in `assets/images/detection/`
+- Has configurable confidence threshold
+- Is tracked separately in catch statistics
+- Appears in Discord notifications with catch breakdown
 
 ### Custom Window Title
 

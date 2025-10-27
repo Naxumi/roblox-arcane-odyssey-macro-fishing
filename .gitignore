@@ -26,16 +26,33 @@ venv/
 ENV/
 env/
 
+# User configuration (contains personal webhook URL - DO NOT COMMIT!)
+config.py
+
+# Screenshots (user-generated during macro runs)
+assets/screenshots/*.png
+!assets/screenshots/.gitkeep
+
+# Backup files
+*.backup
+
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.code-workspace
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Logs
 *.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
