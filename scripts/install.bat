@@ -35,7 +35,7 @@ if not exist "requirements.txt" (
 
 REM Create virtual environment if it doesn't exist
 if not exist ".venv" (
-    echo Creating virtual environment (.venv)...
+    echo Creating virtual environment ^(.venv^)...
     python -m venv .venv
     if errorlevel 1 (
         echo.
@@ -86,7 +86,7 @@ echo ========================================
 echo Installation completed successfully!
 echo ========================================
 echo.
-echo IMPORTANT: Virtual environment is now activated (.venv)
+echo IMPORTANT: Virtual environment is now activated ^(.venv^)
 echo.
 echo Next steps:
 echo.
@@ -95,14 +95,14 @@ echo    python setup_wizard.py
 echo.
 echo 2. Or manually create config.py:
 echo    copy config.example.py config.py
-echo    (Then edit config.py with your settings)
+echo    ^(Then edit config.py with your settings^)
 echo.
-echo 3. Prepare detection images (IMPORTANT!):
+echo 3. Prepare detection images ^(IMPORTANT!^):
 echo    - The provided images may NOT work for your resolution
 echo    - You may need to retake screenshots at YOUR resolution
 echo    - See README.md for detailed instructions
 echo.
-echo 4. Run the macro (always activate venv first):
+echo 4. Run the macro ^(always activate venv first^):
 echo    .venv\Scripts\activate.bat
 echo    python background_fishing_macro.py
 echo.
