@@ -1167,68 +1167,77 @@ class FishingMacro:
                 self.detection_count += 1
                 self.last_detection_time = time.time()
                 
-                # SAVE SCREENSHOT when point is detected and send to Discord
-                screenshot_saved = False
-                screenshot_path = None
-                
-                if SAVE_DETECTION_SCREENSHOTS:
-                    timestamp = time.strftime("%Y%m%d_%H%M%S")
-                    screenshot_path = f"{SCREENSHOT_FOLDER}/point_{timestamp}_conf{point_location['confidence']:.2f}.png"
-                    try:
-                        import os
-                        os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
-                        cv2.imwrite(screenshot_path, screenshot)
-                        screenshot_saved = True
-                        if self.debug:
-                            print(f"[POINT DETECTION] 📸 Screenshot saved: {screenshot_path}")
-                    except Exception as e:
-                        if self.debug:
-                            print(f"[POINT DETECTION] Failed to save screenshot: {e}")
-                
-                # Send Discord notification for point detection
-                if ENABLE_DISCORD_NOTIFICATIONS:
-                    embed = {
-                        "title": "🎣 Fish Bite Detected!",
-                        "description": "Starting clicking sequence...",
-                        "color": 3447003,  # Blue color
-                        "fields": [
-                            {
-                                "name": "🎯 Confidence",
-                                "value": f"{point_location['confidence']:.1%}",
-                                "inline": True
-                            },
-                            {
-                                "name": "📍 Location",
-                                "value": f"({point_location['x']}, {point_location['y']})",
-                                "inline": True
-                            },
-                            {
-                                "name": "🔢 Detection Count",
-                                "value": str(self.detection_count),
-                                "inline": True
-                            }
-                        ],
-                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                    }
-                    
-                    if screenshot_saved and screenshot_path:
-                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
-                        
-                        # Delete screenshot after sending
-                        if DELETE_SCREENSHOTS_AFTER_DISCORD:
-                            try:
-                                if os.path.exists(screenshot_path):
-                                    os.remove(screenshot_path)
-                                    if self.debug:
-                                        print(f"[DISCORD] Screenshot deleted: {screenshot_path}")
-                            except Exception as e:
-                                if self.debug:
-                                    print(f"[DISCORD] Failed to delete screenshot: {e}")
-                    else:
-                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
-                
                 print(f"[DETECTED] Point found at ({point_location['x']}, {point_location['y']}) "
                       f"- Confidence: {point_location['confidence']:.2f}")
+                
+                # START BACKGROUND THREAD for screenshot & Discord notification
+                # This prevents blocking the auto-clicking sequence
+                def save_screenshot_and_notify():
+                    """Background thread to handle screenshot and Discord notification"""
+                    screenshot_saved = False
+                    screenshot_path = None
+                    
+                    if SAVE_DETECTION_SCREENSHOTS:
+                        timestamp = time.strftime("%Y%m%d_%H%M%S")
+                        screenshot_path = f"{SCREENSHOT_FOLDER}/point_{timestamp}_conf{point_location['confidence']:.2f}.png"
+                        try:
+                            import os
+                            os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                            cv2.imwrite(screenshot_path, screenshot)
+                            screenshot_saved = True
+                            if self.debug:
+                                print(f"[POINT DETECTION] 📸 Screenshot saved: {screenshot_path}")
+                        except Exception as e:
+                            if self.debug:
+                                print(f"[POINT DETECTION] Failed to save screenshot: {e}")
+                    
+                    # Send Discord notification for point detection
+                    if ENABLE_DISCORD_NOTIFICATIONS:
+                        embed = {
+                            "title": "🎣 Fish Bite Detected!",
+                            "description": "Starting clicking sequence...",
+                            "color": 3447003,  # Blue color
+                            "fields": [
+                                {
+                                    "name": "🎯 Confidence",
+                                    "value": f"{point_location['confidence']:.1%}",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "📍 Location",
+                                    "value": f"({point_location['x']}, {point_location['y']})",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "🔢 Detection Count",
+                                    "value": str(self.detection_count),
+                                    "inline": True
+                                }
+                            ],
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                        }
+                        
+                        if screenshot_saved and screenshot_path:
+                            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+                            
+                            # Delete screenshot after sending
+                            if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                                try:
+                                    if os.path.exists(screenshot_path):
+                                        os.remove(screenshot_path)
+                                        if self.debug:
+                                            print(f"[DISCORD] Screenshot deleted: {screenshot_path}")
+                                except Exception as e:
+                                    if self.debug:
+                                        print(f"[DISCORD] Failed to delete screenshot: {e}")
+                        else:
+                            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                
+                # Start screenshot/notification thread - don't wait for it!
+                notification_thread = threading.Thread(target=save_screenshot_and_notify, daemon=True)
+                notification_thread.start()
+                if self.debug:
+                    print("[DEBUG] Screenshot/notification thread started in background - proceeding to click immediately")
                 
                 # Get window center for clicking - we'll click at center instead of point location
                 _, _, w, h = self.window_capture.get_window_rect()
