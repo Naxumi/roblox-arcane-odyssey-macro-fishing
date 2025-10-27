@@ -134,8 +134,7 @@ According to rule 2.3.1, you **MUST**:
 
 3. **Run the installation script:**
    ```powershell
-   cd scripts
-   .\install.bat
+   .\scripts\install.bat
    ```
 
    This will:
