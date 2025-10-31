@@ -1853,7 +1853,7 @@ class FishingMacro:
         
     def run(self):
         """Main macro loop"""
-        global emergency_stop, input_currently_blocked
+        global emergency_stop, input_currently_blocked, script_paused
         
         print(f"Starting fishing macro for {self.fishing_time} seconds...")
         print("The Roblox window can be in the background!")
@@ -2305,7 +2305,6 @@ class FishingMacro:
                         
                         # PAUSE SCRIPT at milestones (every 5th auto-cast)
                         if is_milestone:
-                            global script_paused
                             script_paused = True
                             print("\n" + "=" * 70)
                             print("⏸️  SCRIPT AUTO-PAUSED - AUTO-CAST MILESTONE REACHED!")
