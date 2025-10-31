@@ -86,7 +86,13 @@ try:
         ENABLE_COMBAT_DETECTION,
         COMBAT_CONFIDENCE,
         COMBAT_AUTO_KILL_ROBLOX,
-        COMBAT_KILL_DELAY
+        COMBAT_INSTANT_KILL,
+        COMBAT_KILL_DELAY,
+        RECORD_DETECTION_VIDEO,
+        VIDEO_DURATION,
+        VIDEO_FPS,
+        VIDEO_QUALITY,
+        DELETE_VIDEOS_AFTER_DISCORD
     )
     print("[CONFIG] ✅ Configuration loaded from config.py")
 except ImportError:
@@ -131,7 +137,13 @@ except ImportError:
     ENABLE_COMBAT_DETECTION = True
     COMBAT_CONFIDENCE = 0.70
     COMBAT_AUTO_KILL_ROBLOX = False
+    COMBAT_INSTANT_KILL = False
     COMBAT_KILL_DELAY = 10
+    RECORD_DETECTION_VIDEO = True
+    VIDEO_DURATION = 5
+    VIDEO_FPS = 15
+    VIDEO_QUALITY = 23
+    DELETE_VIDEOS_AFTER_DISCORD = True
 # ============================================
 
 # Emergency stop flag
@@ -141,6 +153,9 @@ keyboard_hook = None
 ctrl_pressed = False
 alt_pressed = False
 m_pressed = False
+comma_pressed = False
+period_pressed = False
+script_paused = False  # Flag to pause/resume the script
 config_phase_complete = False  # Flag to suppress debug output during initial config
 
 # Keyboard hook constants
@@ -161,8 +176,8 @@ class KBDLLHOOKSTRUCT(Structure):
 
 def keyboard_hook_callback(nCode, wParam, lParam):
     """Low-level keyboard hook callback - this bypasses BlockInput!"""
-    global emergency_stop, input_currently_blocked
-    global ctrl_pressed, alt_pressed, m_pressed
+    global emergency_stop, input_currently_blocked, script_paused
+    global ctrl_pressed, alt_pressed, m_pressed, comma_pressed, period_pressed
     
     if nCode >= 0:
         kb_struct = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
@@ -171,6 +186,8 @@ def keyboard_hook_callback(nCode, wParam, lParam):
         VK_CONTROL = 0x11
         VK_MENU = 0x12  # ALT key
         VK_M = 0x4D
+        VK_COMMA = 0xBC  # , key
+        VK_PERIOD = 0xBE  # . key
         
         # Track key down/up
         if wParam == WM_KEYDOWN or wParam == WM_SYSKEYDOWN:
@@ -180,6 +197,66 @@ def keyboard_hook_callback(nCode, wParam, lParam):
                 alt_pressed = True
             elif vk_code == VK_M:
                 m_pressed = True
+            elif vk_code == VK_COMMA:
+                comma_pressed = True
+            elif vk_code == VK_PERIOD:
+                period_pressed = True
+            
+            # Check for Ctrl+, (pause script)
+            if ctrl_pressed and comma_pressed and not script_paused:
+                print(f"\n[HOTKEY] Ctrl+, detected - PAUSING SCRIPT")
+                print("\n" + "=" * 50)
+                print("⏸️  SCRIPT PAUSED (Ctrl+,)")
+                print("=" * 50)
+                script_paused = True
+                print("[PAUSE] Script paused - press Ctrl+. to resume")
+                
+                # Send Discord notification about pause
+                if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
+                    def send_pause_notification():
+                        embed = {
+                            "title": "⏸️ Script Paused",
+                            "description": "Fishing macro has been paused via Ctrl+, hotkey",
+                            "color": 16776960,  # Yellow
+                            "fields": [
+                                {
+                                    "name": "📌 Status",
+                                    "value": "Paused - Press Ctrl+. to resume",
+                                    "inline": False
+                                }
+                            ],
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                        }
+                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                    threading.Thread(target=send_pause_notification, daemon=True).start()
+            
+            # Check for Ctrl+. (resume script)
+            if ctrl_pressed and period_pressed and script_paused:
+                print(f"\n[HOTKEY] Ctrl+. detected - RESUMING SCRIPT")
+                print("\n" + "=" * 50)
+                print("▶️  SCRIPT RESUMED (Ctrl+.)")
+                print("=" * 50)
+                script_paused = False
+                print("[RESUME] Script resumed - fishing continues")
+                
+                # Send Discord notification about resume
+                if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
+                    def send_resume_notification():
+                        embed = {
+                            "title": "▶️ Script Resumed",
+                            "description": "Fishing macro has been resumed via Ctrl+. hotkey",
+                            "color": 5763719,  # Green
+                            "fields": [
+                                {
+                                    "name": "📌 Status",
+                                    "value": "Active - Fishing continues",
+                                    "inline": False
+                                }
+                            ],
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                        }
+                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                    threading.Thread(target=send_resume_notification, daemon=True).start()
             
             # Check for Ctrl+Alt+M combination
             if ctrl_pressed and alt_pressed and m_pressed:
@@ -208,6 +285,10 @@ def keyboard_hook_callback(nCode, wParam, lParam):
                 alt_pressed = False
             elif vk_code == VK_M:
                 m_pressed = False
+            elif vk_code == VK_COMMA:
+                comma_pressed = False
+            elif vk_code == VK_PERIOD:
+                period_pressed = False
     
     # Call next hook in chain
     return ctypes.windll.user32.CallNextHookEx(None, nCode, wParam, lParam)
@@ -342,10 +423,13 @@ def start_emergency_listener():
     listener_thread.start()
     return listener_thread
 
-def send_discord_notification_async(webhook_url, message, embed=None, image_path=None):
+def send_discord_notification_async(webhook_url, message, embed=None, image_path=None, video_path=None):
     """Send Discord notification in a background thread to avoid blocking"""
     def _send():
-        send_discord_notification(webhook_url, message, embed, image_path)
+        if video_path:
+            send_discord_notification_with_video(webhook_url, message, embed, video_path)
+        else:
+            send_discord_notification(webhook_url, message, embed, image_path)
     
     thread = threading.Thread(target=_send, daemon=True)
     thread.start()
@@ -405,6 +489,48 @@ def send_discord_notification(webhook_url, message, embed=None, image_path=None)
             
     except Exception as e:
         print(f"[DISCORD] Error sending notification: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def send_discord_notification_with_video(webhook_url, message, embed=None, video_path=None):
+    """Send a notification to Discord via webhook with video attachment
+    
+    Args:
+        webhook_url: Discord webhook URL
+        message: Text message to send
+        embed: Optional embed dict
+        video_path: Path to video file to attach
+    """
+    if not ENABLE_DISCORD_NOTIFICATIONS or not webhook_url:
+        return False
+    
+    try:
+        payload = {
+            "content": message
+        }
+        
+        if embed:
+            payload["embeds"] = [embed]
+        
+        # Send with video attachment
+        with open(video_path, "rb") as video_file:
+            response = requests.post(
+                webhook_url,
+                data={"payload_json": json.dumps(payload)},
+                files={"file": ("fishing_detection.mp4", video_file, "video/mp4")},
+                timeout=30  # Longer timeout for video upload
+            )
+        
+        if response.status_code == 204 or response.status_code == 200:
+            return True
+        else:
+            print(f"[DISCORD] Failed to send video: HTTP {response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"[DISCORD] Error sending video: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -678,9 +804,12 @@ class ImageDetector:
 class FishingMacro:
     """Main fishing macro controller"""
     
-    def __init__(self, fishing_time_seconds, eating_interval_seconds, eating_count, debug=False):
+    def __init__(self, fishing_time_seconds, eating_interval_seconds, eating_count, debug=False, webhook_url=None):
         self.window_capture = BackgroundWindowCapture(WINDOW_NAME)
         self.point_detector = ImageDetector(DETECTION_IMAGES.get('point', 'assets/images/detection/point.png'), confidence=POINT_CONFIDENCE)
+        
+        # Store webhook URL (use provided or fall back to config)
+        self.webhook_url = webhook_url if webhook_url else DISCORD_WEBHOOK_URL
         
         # Hunger detection (optional)
         hunger_image = DETECTION_IMAGES.get('hunger', 'assets/images/detection/hunger.png')
@@ -790,7 +919,7 @@ class FishingMacro:
             ],
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
         }
-        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+        send_discord_notification(self.webhook_url, "", embed)
     
     def _save_and_notify_catch(self, screenshot, img_name, max_val, detector_name, time_since_last_catch, check_counter):
         """Save screenshot and send Discord notification for catch (runs in background thread)"""
@@ -813,11 +942,12 @@ class FishingMacro:
         
         # Send Discord notification about the catch
         if ENABLE_DISCORD_NOTIFICATIONS:
-            # Determine catch type emoji
+            # Determine catch type emoji and check if it's a sunken item
+            is_sunken = "sunken" in detector_name.lower()
             catch_emoji = "🐟"
             if "treasure" in detector_name.lower():
                 catch_emoji = "💎"
-            elif "sunken" in detector_name.lower():
+            elif is_sunken:
                 catch_emoji = "⚓"
             elif "junk" in detector_name.lower():
                 catch_emoji = "🗑️"
@@ -841,10 +971,14 @@ class FishingMacro:
             
             catch_breakdown_text = " | ".join([f"{name.title()}: {count}" for name, count in sorted(catch_breakdown.items())])
             
+            # Use different color and title for sunken items (most important)
+            embed_color = 15105570 if is_sunken else 5763719  # Orange for sunken, green for others
+            embed_title = f"🚨 {catch_emoji} SUNKEN ITEM CAUGHT! 🚨" if is_sunken else f"{catch_emoji} Catch Detected!"
+            
             embed = {
-                "title": f"{catch_emoji} Catch Detected!",
+                "title": embed_title,
                 "description": f"**{detector_name.title()}** caught!",
-                "color": 5763719,  # Green color
+                "color": embed_color,
                 "fields": [
                     {
                         "name": "🎯 Confidence",
@@ -885,9 +1019,15 @@ class FishingMacro:
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
             
+            # Add user mention for sunken items (most important)
+            mention_message = ""
+            if is_sunken and DISCORD_MENTION_USER_ID:
+                mention_message = f"<@{DISCORD_MENTION_USER_ID}>"
+                print(f"[DISCORD] 🚨 SUNKEN ITEM - Mentioning user {DISCORD_MENTION_USER_ID}")
+            
             # Send notification with screenshot
             if screenshot_saved and screenshot_path:
-                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+                send_discord_notification(self.webhook_url, mention_message, embed, image_path=screenshot_path)
                 
                 # Delete screenshot after sending to save storage (if enabled)
                 if DELETE_SCREENSHOTS_AFTER_DISCORD:
@@ -900,7 +1040,7 @@ class FishingMacro:
                         print(f"[DISCORD] Failed to delete screenshot: {e}")
             else:
                 # Send without screenshot if saving failed or disabled
-                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                send_discord_notification(self.webhook_url, mention_message, embed)
     
     def _send_threshold_warning(self, screenshot, highest_conf_name, highest_confidence, max_confidences, check_counter):
         """Send threshold warning screenshot and notification (runs in background thread)"""
@@ -932,7 +1072,7 @@ class FishingMacro:
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
             
-            send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+            send_discord_notification(self.webhook_url, "", embed, image_path=screenshot_path)
             
             # Delete screenshot after sending
             if DELETE_SCREENSHOTS_AFTER_DISCORD and os.path.exists(screenshot_path):
@@ -942,14 +1082,81 @@ class FishingMacro:
             print(f"[DETECTION THREAD] Failed to send threshold warning: {e}")
     
     def _save_point_screenshot_and_notify(self, screenshot, point_location, reason="timeout_or_low_confidence"):
-        """Save point detection screenshot and send notification (runs in background thread)
+        """Save point detection screenshot/video and send notification (runs in background thread)
         
         Args:
             reason: Why screenshot is being sent - "timeout_or_low_confidence" or "fish_bite"
         """
         screenshot_saved = False
         screenshot_path = None
+        video_saved = False
+        video_path = None
         
+        # Record video if enabled (in separate thread for performance)
+        if RECORD_DETECTION_VIDEO and reason != "fish_bite":
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            video_path = f"{SCREENSHOT_FOLDER}/point_{timestamp}_conf{point_location['confidence']:.2f}.mp4"
+            
+            # Spawn video recording thread (non-blocking)
+            def record_video():
+                nonlocal video_saved, video_path
+                try:
+                    import os
+                    os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                    
+                    # Get window dimensions
+                    _, _, w, h = self.window_capture.get_window_rect()
+                    
+                    if self.debug:
+                        print(f"[VIDEO] 🎥 Recording {VIDEO_DURATION}s video at {VIDEO_FPS} FPS...")
+                    
+                    # Initialize video writer with H.264 compression
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MP4 codec
+                    video_writer = cv2.VideoWriter(video_path, fourcc, VIDEO_FPS, (w, h))
+                    
+                    if not video_writer.isOpened():
+                        print(f"[VIDEO] ❌ Failed to open video writer")
+                        return
+                    
+                    # Record frames for specified duration
+                    start_time = time.time()
+                    frame_count = 0
+                    target_frame_time = 1.0 / VIDEO_FPS
+                    
+                    while time.time() - start_time < VIDEO_DURATION:
+                        frame_start = time.time()
+                        
+                        # Capture frame
+                        frame = self.window_capture.capture_window()
+                        if frame is not None:
+                            video_writer.write(frame)
+                            frame_count += 1
+                        
+                        # Control frame rate precisely
+                        elapsed = time.time() - frame_start
+                        sleep_time = target_frame_time - elapsed
+                        if sleep_time > 0:
+                            time.sleep(sleep_time)
+                    
+                    # Release video writer
+                    video_writer.release()
+                    video_saved = True
+                    
+                    if self.debug:
+                        file_size = os.path.getsize(video_path) / (1024 * 1024)  # MB
+                        print(f"[VIDEO] ✅ Video saved: {video_path} ({frame_count} frames, {file_size:.2f}MB)")
+                    
+                except Exception as e:
+                    print(f"[VIDEO] ❌ Failed to record video: {e}")
+                    if self.debug:
+                        import traceback
+                        traceback.print_exc()
+            
+            # Start video recording thread
+            video_thread = threading.Thread(target=record_video, daemon=True)
+            video_thread.start()
+        
+        # Also save a single screenshot as fallback
         if SAVE_DETECTION_SCREENSHOTS:
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             screenshot_path = f"{SCREENSHOT_FOLDER}/point_{timestamp}_conf{point_location['confidence']:.2f}.png"
@@ -1000,8 +1207,35 @@ class FishingMacro:
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
             
-            if screenshot_saved and screenshot_path:
-                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed, image_path=screenshot_path)
+            # Wait for video to finish recording if enabled
+            if RECORD_DETECTION_VIDEO and video_thread:
+                if self.debug:
+                    print(f"[VIDEO] ⏳ Waiting for video recording to complete...")
+                video_thread.join(timeout=VIDEO_DURATION + 2)  # Wait max duration + 2s buffer
+            
+            # Prefer video over screenshot for Discord
+            if RECORD_DETECTION_VIDEO and video_saved and video_path and os.path.exists(video_path):
+                # Send video asynchronously (non-blocking)
+                send_discord_notification_async(self.webhook_url, "", embed, video_path=video_path)
+                
+                # Delete video after sending
+                if DELETE_VIDEOS_AFTER_DISCORD:
+                    def delete_after_delay():
+                        time.sleep(5)  # Wait 5s to ensure upload completes
+                        try:
+                            if os.path.exists(video_path):
+                                os.remove(video_path)
+                                if self.debug:
+                                    print(f"[DISCORD] 🗑️ Video deleted: {video_path}")
+                        except Exception as e:
+                            if self.debug:
+                                print(f"[DISCORD] Failed to delete video: {e}")
+                    
+                    threading.Thread(target=delete_after_delay, daemon=True).start()
+                    
+            elif screenshot_saved and screenshot_path:
+                # Fallback to screenshot if video failed
+                send_discord_notification(self.webhook_url, "", embed, image_path=screenshot_path)
                 
                 # Delete screenshot after sending
                 if DELETE_SCREENSHOTS_AFTER_DISCORD:
@@ -1014,7 +1248,7 @@ class FishingMacro:
                         if self.debug:
                             print(f"[DISCORD] Failed to delete screenshot: {e}")
             else:
-                send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                send_discord_notification(self.webhook_url, "", embed)
     
     def eat_food(self):
         """Eat food - press 0, click 3 times, press 9, click once"""
@@ -1156,6 +1390,13 @@ class FishingMacro:
                     if combat_location:
                         # Combat detected!
                         if self.combat_detected_time is None:
+                            # Check if script is paused - skip combat actions if paused
+                            if script_paused:
+                                if self.debug:
+                                    print("[COMBAT DETECTION] ⏸️ Script is paused - skipping combat alerts and actions")
+                                time.sleep(2)
+                                continue
+                            
                             # First detection
                             self.combat_detected_time = time.time()
                             self.combat_detection_count += 1
@@ -1180,7 +1421,14 @@ class FishingMacro:
                                     session_minutes = int(session_duration // 60)
                                     session_seconds = int(session_duration % 60)
                                     
-                                    action_text = f"Roblox will be terminated in {COMBAT_KILL_DELAY}s" if COMBAT_AUTO_KILL_ROBLOX else "Game will NOT be closed (auto-kill disabled)"
+                                    # Determine action text based on kill settings
+                                    if COMBAT_AUTO_KILL_ROBLOX:
+                                        if COMBAT_INSTANT_KILL:
+                                            action_text = "⚡ Roblox will be terminated INSTANTLY (no delay)"
+                                        else:
+                                            action_text = f"Roblox will be terminated in {COMBAT_KILL_DELAY}s"
+                                    else:
+                                        action_text = "Game will NOT be closed (auto-kill disabled)"
                                     
                                     # SPAM 3 MESSAGES with FRESH screenshots for maximum urgency!
                                     for i in range(3):
@@ -1234,7 +1482,7 @@ class FishingMacro:
                                                 },
                                                 {
                                                     "name": "⏱️ Action",
-                                                    "value": f"{'AUTO-KILL in ' + str(COMBAT_KILL_DELAY) + 's' if COMBAT_AUTO_KILL_ROBLOX else 'Manual intervention required'}",
+                                                    "value": f"{'⚡ INSTANT KILL' if (COMBAT_AUTO_KILL_ROBLOX and COMBAT_INSTANT_KILL) else ('AUTO-KILL in ' + str(COMBAT_KILL_DELAY) + 's' if COMBAT_AUTO_KILL_ROBLOX else 'Manual intervention required')}",
                                                     "inline": True
                                                 }
                                             ],
@@ -1243,7 +1491,7 @@ class FishingMacro:
                                         
                                         # Send message with screenshot
                                         if screenshot_saved and screenshot_path:
-                                            send_discord_notification(DISCORD_WEBHOOK_URL, mention, embed, image_path=screenshot_path)
+                                            send_discord_notification(self.webhook_url, mention, embed, image_path=screenshot_path)
                                             
                                             # Delete screenshot after sending
                                             if DELETE_SCREENSHOTS_AFTER_DISCORD:
@@ -1254,7 +1502,7 @@ class FishingMacro:
                                                     print(f"[COMBAT DETECTION] Failed to delete screenshot {i+1}: {e}")
                                         else:
                                             # Send without screenshot if capture/save failed
-                                            send_discord_notification(DISCORD_WEBHOOK_URL, mention, embed)
+                                            send_discord_notification(self.webhook_url, mention, embed)
                                         
                                         # Small delay between messages to ensure they arrive in order
                                         time.sleep(0.5)
@@ -1318,7 +1566,72 @@ class FishingMacro:
                         # Check if we should kill Roblox process
                         elapsed_since_detection = time.time() - self.combat_detected_time
                         
-                        if COMBAT_AUTO_KILL_ROBLOX and elapsed_since_detection >= COMBAT_KILL_DELAY:
+                        # Skip kill actions if script is paused
+                        if script_paused:
+                            if self.debug:
+                                print("[COMBAT DETECTION] ⏸️ Script is paused - skipping Roblox kill actions")
+                            time.sleep(2)
+                            continue
+                        
+                        # Instant kill: kill immediately without delay
+                        if COMBAT_AUTO_KILL_ROBLOX and COMBAT_INSTANT_KILL:
+                            print(f"\n{'='*60}")
+                            print(f"[COMBAT DETECTION] ⚠️  INSTANT KILL ENABLED - TERMINATING IMMEDIATELY!")
+                            print(f"[COMBAT DETECTION] 🔴 TERMINATING ROBLOX PROCESS...")
+                            print(f"{'='*60}\n")
+                            
+                            # Kill Roblox process
+                            try:
+                                import psutil
+                                killed = False
+                                
+                                for proc in psutil.process_iter(['name', 'pid']):
+                                    if proc.info['name'] and 'roblox' in proc.info['name'].lower():
+                                        print(f"[COMBAT DETECTION] Killing process: {proc.info['name']} (PID: {proc.info['pid']})")
+                                        proc.kill()
+                                        killed = True
+                                
+                                if killed:
+                                    print("[COMBAT DETECTION] ✅ Roblox process terminated successfully (INSTANT)")
+                                    
+                                    # Send final Discord notification
+                                    if ENABLE_DISCORD_NOTIFICATIONS:
+                                        mention = ""
+                                        if DISCORD_MENTION_USER_ID and MENTION_ON_AUTO_KILL:
+                                            mention = f"<@{DISCORD_MENTION_USER_ID}>\n"
+                                        
+                                        embed = {
+                                            "title": "🔴 Roblox Process Terminated (INSTANT KILL)",
+                                            "description": "Combat detected - Roblox was instantly terminated without delay",
+                                            "color": 16711680,  # Bright red
+                                            "fields": [
+                                                {
+                                                    "name": "⚡ Kill Mode",
+                                                    "value": "INSTANT (no delay)",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "🔔 Combat Detection #",
+                                                    "value": f"{self.combat_detection_count}",
+                                                    "inline": True
+                                                }
+                                            ],
+                                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                        }
+                                        send_discord_notification(self.webhook_url, mention, embed)
+                                else:
+                                    print("[COMBAT DETECTION] ⚠️  No Roblox process found to kill")
+                                    
+                            except Exception as e:
+                                print(f"[COMBAT DETECTION] ❌ Failed to kill Roblox process: {e}")
+                                import traceback
+                                traceback.print_exc()
+                            
+                            # Stop combat detection after instant killing
+                            break
+                        
+                        # Delayed kill: wait for configured delay before killing
+                        elif COMBAT_AUTO_KILL_ROBLOX and elapsed_since_detection >= COMBAT_KILL_DELAY:
                             print(f"\n{'='*60}")
                             print(f"[COMBAT DETECTION] ⚠️  Combat still active after {COMBAT_KILL_DELAY}s!")
                             print(f"[COMBAT DETECTION] 🔴 TERMINATING ROBLOX PROCESS...")
@@ -1350,7 +1663,7 @@ class FishingMacro:
                                             "color": 10038562,  # Dark red
                                             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
                                         }
-                                        send_discord_notification_async(DISCORD_WEBHOOK_URL, mention, embed)
+                                        send_discord_notification_async(self.webhook_url, mention, embed)
                                     
                                     # Trigger emergency stop
                                     emergency_stop = True
@@ -1558,6 +1871,13 @@ class FishingMacro:
                 print("[STOP] Emergency stop detected at start of loop, exiting...")
                 break
             
+            # Check if script is paused
+            if script_paused:
+                if self.debug:
+                    print("[DEBUG] Script paused - waiting...")
+                time.sleep(1)
+                continue
+            
             # Capture window
             screenshot = self.window_capture.capture_window()
             
@@ -1579,21 +1899,27 @@ class FishingMacro:
                 if self.debug:
                     print("[DEBUG] No active fishing detected, time to eat")
                 
-                # Only eat if not in combat
-                if not self.combat_active:
+                # Only eat if not in combat and not paused
+                if not self.combat_active and not script_paused:
                     self.eat_food()
                     # Wait a bit after eating before continuing
                     time.sleep(2)
                 else:
                     if self.debug:
-                        print("[DEBUG] Skipping eating - combat active")
+                        if self.combat_active:
+                            print("[DEBUG] Skipping eating - combat active")
+                        if script_paused:
+                            print("[DEBUG] Skipping eating - script paused")
                 
                 continue
             
-            # Skip fishing detection if combat is active
-            if self.combat_active:
+            # Skip fishing detection if combat is active or script is paused
+            if self.combat_active or script_paused:
                 if self.debug:
-                    print("[DEBUG] Skipping fishing - combat active")
+                    if self.combat_active:
+                        print("[DEBUG] Skipping fishing - combat active")
+                    if script_paused:
+                        print("[DEBUG] Skipping fishing - script paused")
                 time.sleep(1)
                 continue
             
@@ -1832,6 +2158,23 @@ class FishingMacro:
                     self.auto_cast_count += 1
                     print(f"[AUTO-CAST] No detection for {self.no_detection_timeout}s. Casting rod... (Auto-cast #{self.auto_cast_count})")
                     
+                    # Capture screenshot for Discord notification
+                    screenshot_saved = False
+                    screenshot_path = None
+                    
+                    if SAVE_DETECTION_SCREENSHOTS and screenshot is not None:
+                        timestamp = time.strftime("%Y%m%d_%H%M%S")
+                        screenshot_path = f"{SCREENSHOT_FOLDER}/auto_cast_{timestamp}_count{self.auto_cast_count}.png"
+                        
+                        try:
+                            import os
+                            os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                            cv2.imwrite(screenshot_path, screenshot)
+                            screenshot_saved = True
+                            print(f"[AUTO-CAST] 📸 Screenshot saved: {screenshot_path}")
+                        except Exception as e:
+                            print(f"[AUTO-CAST] Failed to save screenshot: {e}")
+                    
                     # Click center of screen to cast
                     _, _, w, h = self.window_capture.get_window_rect()
                     center_x = w // 2
@@ -1844,21 +2187,36 @@ class FishingMacro:
                     self.click_count += 1
                     self.last_detection_time = time.time()
                     
-                    # Send Discord notification about auto-cast
+                    # Send Discord notification EVERY TIME auto-cast happens
                     if ENABLE_DISCORD_NOTIFICATIONS:
+                        # Check if this is a milestone (every 5th auto-cast)
+                        is_milestone = self.auto_cast_count % 5 == 0
+                        
+                        # Build mention string (only for milestones)
+                        mention = ""
+                        if is_milestone:
+                            if DISCORD_MENTION_USER_ID:
+                                mention = f"<@{DISCORD_MENTION_USER_ID}>\n"
+                            print(f"[AUTO-CAST] 🚨 Milestone reached ({self.auto_cast_count}) - sending alert with mention")
+                        else:
+                            print(f"[AUTO-CAST] Sending Discord notification (#{self.auto_cast_count})")
+                        
                         # Calculate session duration
                         session_duration = time.time() - self.macro_start_time
                         session_minutes = int(session_duration // 60)
                         session_seconds = int(session_duration % 60)
                         
-                        embed = {
-                            "title": "🎣 Auto-Cast Triggered",
-                            "description": f"No fish bite detected for {self.no_detection_timeout}s - automatically re-casting rod",
-                            "color": 16744272,  # Orange color
+                        # Different styling for milestones vs regular notifications
+                        if is_milestone:
+                            # MILESTONE: Special alert with mention
+                            embed = {
+                                "title": "🚨 ⚠️ AUTO-CAST MILESTONE ALERT!",
+                                "description": f"**Auto-cast triggered {self.auto_cast_count} times!**\n\n⚠️ No fish bites detected for extended period - rod has been re-cast multiple times.\n\n**⏸️ SCRIPT AUTO-PAUSED FOR INVESTIGATION**\n\n**This may indicate:**\n• Wrong fishing location\n• Detection images need updating\n• Low confidence threshold\n• Game lag or issues\n\n**To resume:** Press **Ctrl+.** (period key)",
+                                "color": 16711680,  # Red color for urgency
                             "fields": [
                                 {
                                     "name": "🔄 Auto-Cast Count",
-                                    "value": f"{self.auto_cast_count}",
+                                    "value": f"**{self.auto_cast_count}** (Milestone!)",
                                     "inline": True
                                 },
                                 {
@@ -1867,7 +2225,12 @@ class FishingMacro:
                                     "inline": True
                                 },
                                 {
-                                    "name": "🕐 Session Duration",
+                                    "name": "⏳ Detection Timeout",
+                                    "value": f"{self.no_detection_timeout}s",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "� Session Duration",
                                     "value": f"{session_minutes}m {session_seconds}s",
                                     "inline": True
                                 },
@@ -1880,16 +2243,77 @@ class FishingMacro:
                                     "name": "🎯 Total Detections",
                                     "value": f"{self.detection_count}",
                                     "inline": True
-                                },
-                                {
-                                    "name": "🖱️ Total Clicks",
-                                    "value": f"{self.click_count}",
-                                    "inline": True
                                 }
                             ],
                             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
                         }
-                        send_discord_notification_async(DISCORD_WEBHOOK_URL, "", embed)
+                        else:
+                            # REGULAR: Standard notification without mention
+                            embed = {
+                                "title": "🎣 Auto-Cast Triggered",
+                                "description": f"No fish bite detected for {self.no_detection_timeout}s - automatically re-casting rod",
+                                "color": 16744272,  # Orange color
+                                "fields": [
+                                    {
+                                        "name": "🔄 Auto-Cast Count",
+                                        "value": f"{self.auto_cast_count}",
+                                        "inline": True
+                                    },
+                                    {
+                                        "name": "⏱️ Time Since Last Detection",
+                                        "value": f"{time_since_last_detection:.1f}s",
+                                        "inline": True
+                                    },
+                                    {
+                                        "name": "⏳ Detection Timeout",
+                                        "value": f"{self.no_detection_timeout}s",
+                                        "inline": True
+                                    },
+                                    {
+                                        "name": "🕐 Session Duration",
+                                        "value": f"{session_minutes}m {session_seconds}s",
+                                        "inline": True
+                                    },
+                                    {
+                                        "name": "📊 Total Catches",
+                                        "value": f"{self.total_catches}",
+                                        "inline": True
+                                    },
+                                    {
+                                        "name": "🎯 Total Detections",
+                                        "value": f"{self.detection_count}",
+                                        "inline": True
+                                    }
+                                ],
+                                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                            }
+                        
+                        # Send with screenshot if available
+                        if screenshot_saved and screenshot_path:
+                            send_discord_notification(self.webhook_url, mention, embed, image_path=screenshot_path)
+                            
+                            # Delete screenshot after sending
+                            if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                                try:
+                                    if os.path.exists(screenshot_path):
+                                        os.remove(screenshot_path)
+                                except Exception as e:
+                                    print(f"[AUTO-CAST] Failed to delete screenshot: {e}")
+                        else:
+                            # Send without screenshot
+                            send_discord_notification(self.webhook_url, mention, embed)
+                        
+                        # PAUSE SCRIPT at milestones (every 5th auto-cast)
+                        if is_milestone:
+                            global script_paused
+                            script_paused = True
+                            print("\n" + "=" * 70)
+                            print("⏸️  SCRIPT AUTO-PAUSED - AUTO-CAST MILESTONE REACHED!")
+                            print("=" * 70)
+                            print(f"[AUTO-PAUSE] Auto-cast count reached {self.auto_cast_count}")
+                            print(f"[AUTO-PAUSE] Script paused for investigation")
+                            print(f"[AUTO-PAUSE] Press Ctrl+. (period) to RESUME fishing")
+                            print("=" * 70 + "\n")
             
             # Status update
             remaining_time = int(self.end_time - time.time())
@@ -1943,10 +2367,29 @@ def main():
         
         # Start emergency stop listener
         print("🚨 EMERGENCY STOP: Press Ctrl+Alt+M at any time to stop and unblock input!")
+        print("⏸️  PAUSE SCRIPT: Press Ctrl+, to pause the script")
+        print("▶️  RESUME SCRIPT: Press Ctrl+. to resume the script")
         print("-" * 50)
         listener_thread = start_emergency_listener()
         
         print()
+        
+        # Optional: Override Discord webhook URL
+        webhook_url_override = None
+        if ENABLE_DISCORD_NOTIFICATIONS:
+            print("📱 Discord Webhook Configuration:")
+            if DISCORD_WEBHOOK_URL:
+                print(f"   Current webhook: {DISCORD_WEBHOOK_URL[:50]}...")
+            else:
+                print("   ⚠️  No webhook configured in config.py")
+            print()
+            webhook_input = input("Enter Discord webhook URL (press Enter to use config default): ").strip()
+            if webhook_input:
+                webhook_url_override = webhook_input
+                print(f"✅ Using custom webhook: {webhook_url_override[:50]}...")
+            else:
+                print(f"✅ Using webhook from config.py")
+            print()
         
         # Get fishing duration from user
         fishing_time = int(input("Enter in seconds how long should scan last: "))
@@ -1974,9 +2417,12 @@ def main():
             print("[DEBUG MODE ENABLED] - Detailed click information will be shown")
             print()
         
+        # Use webhook override if provided
+        active_webhook_url = webhook_url_override if webhook_url_override else DISCORD_WEBHOOK_URL
+        
         if ENABLE_DISCORD_NOTIFICATIONS:
             print("🔔 [DISCORD NOTIFICATIONS ENABLED]")
-            print(f"    Webhook: {DISCORD_WEBHOOK_URL[:50]}...")
+            print(f"    Webhook: {active_webhook_url[:50]}...")
             print()
         
         print("⚠️  IMPORTANT NOTES:")
@@ -1987,14 +2433,17 @@ def main():
         print("    5. ⚠️ Run as Administrator for best results!")
         print("       - Required for input blocking to work")
         print("       - Required for keyboard hook (emergency stop during blocking)")
-        print("    6. 🚨 Press Ctrl+Alt+M to emergency stop!")
-        print("       - Works immediately when input is NOT blocked")
+        print("    6. 🚨 Hotkeys available:")
+        print("       - Ctrl+Alt+M: Emergency stop (exits program)")
+        print("       - Ctrl+,: Pause script (temporary pause)")
+        print("       - Ctrl+.: Resume script (continue fishing)")
+        print("    7. Works immediately when input is NOT blocked")
         print("       - If hook installed: works even during blocking")
         print("       - If hook failed: stops after current fishing action completes")
         print()
         
-        # Create and run macro
-        macro = FishingMacro(fishing_time, eating_interval, eating_count, debug=debug_mode)
+        # Create and run macro (pass active webhook URL)
+        macro = FishingMacro(fishing_time, eating_interval, eating_count, debug=debug_mode, webhook_url=active_webhook_url)
         
         # Send startup notification
         if ENABLE_DISCORD_NOTIFICATIONS:
@@ -2026,8 +2475,8 @@ def main():
                 ],
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
-            # Send in background thread to avoid startup delay
-            send_discord_notification_async(DISCORD_WEBHOOK_URL, "🚀 Bot Starting...", embed)
+            # Send in background thread to avoid startup delay (use active webhook)
+            send_discord_notification_async(active_webhook_url, "🚀 Bot Starting...", embed)
         
         macro.run()
         
@@ -2072,8 +2521,8 @@ def main():
                 ],
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
-            # Send in background thread - no need to wait for completion notification
-            send_discord_notification_async(DISCORD_WEBHOOK_URL, "✅ Session Finished!", embed)
+            # Send in background thread - no need to wait for completion notification (use active webhook)
+            send_discord_notification_async(active_webhook_url, "✅ Session Finished!", embed)
         
     except KeyboardInterrupt:
         print("\n[INTERRUPTED] Ctrl+C detected")

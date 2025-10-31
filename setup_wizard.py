@@ -167,6 +167,82 @@ def setup_wizard():
     
     print()
     
+    # Video recording settings
+    print("-" * 60)
+    print("🎥 VIDEO RECORDING SETTINGS")
+    print("-" * 60)
+    print()
+    print("The macro can record videos when fishing issues are detected.")
+    print("Videos provide better context than screenshots for debugging detection problems.")
+    print()
+    print("Default video settings:")
+    print("- Duration: 5 seconds")
+    print("- FPS: 15 (smooth + small file size, ~1-3MB per video)")
+    print("- Quality: 23 (H.264 CRF - balanced quality/size)")
+    print("- Codec: H.264 MP4 (compressed, plays in Discord)")
+    print()
+    print("⚠️ Note: Recording uses ~10-15% more CPU during the recording period")
+    print()
+    
+    record_video = input("Enable video recording for fishing issues? (y/n, default=y): ").strip().lower()
+    config_updates['RECORD_DETECTION_VIDEO'] = 'True' if record_video != 'n' else 'False'
+    
+    if record_video != 'n':
+        print()
+        
+        # Delete videos after Discord
+        delete_videos = input("Delete videos after sending to Discord? (y/n, default=y): ").strip().lower()
+        config_updates['DELETE_VIDEOS_AFTER_DISCORD'] = 'True' if delete_videos != 'n' else 'False'
+        
+        # Optional: Custom duration
+        print()
+        print("Video duration options:")
+        print("- 3 seconds: Short, quick captures")
+        print("- 5 seconds: Standard, good balance [RECOMMENDED]")
+        print("- 10 seconds: Long, full context")
+        custom_duration = input("Use custom duration? (leave empty for default 5s): ").strip()
+        if custom_duration and custom_duration.isdigit():
+            duration = int(custom_duration)
+            if 1 <= duration <= 30:
+                config_updates['VIDEO_DURATION'] = custom_duration
+                print(f"✅ Video duration set to {duration} seconds")
+            else:
+                print("⚠️  Invalid duration (must be 1-30s) - using default (5s)")
+        
+        # Optional: Custom FPS
+        print()
+        print("Video FPS (frames per second) options:")
+        print("- 10 FPS: Lower quality, smallest files (~0.5-1MB)")
+        print("- 15 FPS: Smooth, small files (~1-2MB) [RECOMMENDED]")
+        print("- 30 FPS: Very smooth, larger files (~2-4MB)")
+        custom_fps = input("Use custom FPS? (leave empty for default 15 FPS): ").strip()
+        if custom_fps and custom_fps.isdigit():
+            fps = int(custom_fps)
+            if 5 <= fps <= 60:
+                config_updates['VIDEO_FPS'] = custom_fps
+                print(f"✅ Video FPS set to {fps}")
+            else:
+                print("⚠️  Invalid FPS (must be 5-60) - using default (15)")
+        
+        # Optional: Custom quality
+        print()
+        print("Video quality (H.264 CRF) options:")
+        print("- 18: High quality, larger files (~3-5MB)")
+        print("- 23: Balanced quality/size (~1-3MB) [RECOMMENDED]")
+        print("- 28: Lower quality, smaller files (~0.5-1.5MB)")
+        print()
+        print("Note: Lower CRF = better quality but larger file size")
+        custom_quality = input("Use custom quality? (leave empty for default 23): ").strip()
+        if custom_quality and custom_quality.isdigit():
+            quality = int(custom_quality)
+            if 0 <= quality <= 51:
+                config_updates['VIDEO_QUALITY'] = custom_quality
+                print(f"✅ Video quality set to CRF {quality}")
+            else:
+                print("⚠️  Invalid quality (must be 0-51) - using default (23)")
+    
+    print()
+    
     # Combat detection settings
     print("-" * 60)
     print("⚔️  COMBAT DETECTION SETTINGS")
@@ -187,15 +263,43 @@ def setup_wizard():
     if enable_combat != 'n':
         print()
         print("⚠️  AUTO-KILL OPTION:")
-        print("If combat is detected and you don't respond within 10 seconds,")
+        print("If combat is detected and you don't respond,")
         print("the macro can automatically close Roblox (leave the game).")
         print()
         auto_kill = input("Enable auto-kill Roblox when combat detected? (y/n, default=n): ").strip().lower()
         config_updates['COMBAT_AUTO_KILL_ROBLOX'] = 'True' if auto_kill == 'y' else 'False'
         
         if auto_kill == 'y':
-            print("✅ Auto-kill enabled - Roblox will close 10s after combat detection")
+            print()
+            print("⚡ INSTANT KILL OPTION:")
+            print("Choose kill timing:")
+            print("  - INSTANT: Kill Roblox immediately when combat detected (no delay)")
+            print("  - DELAYED: Wait X seconds before killing (gives you time to respond)")
+            print()
+            instant_kill = input("Use instant kill? (y/n, default=n): ").strip().lower()
+            config_updates['COMBAT_INSTANT_KILL'] = 'True' if instant_kill == 'y' else 'False'
+            
+            if instant_kill == 'y':
+                print("✅ Instant kill enabled - Roblox will close IMMEDIATELY when combat detected")
+            else:
+                print()
+                print("⏱️  KILL DELAY CONFIGURATION:")
+                print("How many seconds to wait before killing Roblox after combat detected?")
+                print("This gives you time to respond and cancel if it's a false positive.")
+                print()
+                try:
+                    kill_delay = int(input("Kill delay in seconds (default=10): ") or "10")
+                    if kill_delay < 1:
+                        print("⚠️  Invalid delay - using default (10 seconds)")
+                        kill_delay = 10
+                    config_updates['COMBAT_KILL_DELAY'] = str(kill_delay)
+                    print(f"✅ Delayed kill enabled - Roblox will close {kill_delay}s after combat detection")
+                except ValueError:
+                    print("⚠️  Invalid input - using default (10 seconds)")
+                    config_updates['COMBAT_KILL_DELAY'] = '10'
+                    print("✅ Delayed kill enabled - Roblox will close 10s after combat detection")
         else:
+            config_updates['COMBAT_INSTANT_KILL'] = 'False'
             print("ℹ️  Auto-kill disabled - you'll be notified but game won't close")
     else:
         print("ℹ️  Combat detection disabled")

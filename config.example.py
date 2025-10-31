@@ -100,7 +100,8 @@ EATING_SAFETY_TIMEOUT = 90  # Force unblock during eating after this many second
 ENABLE_COMBAT_DETECTION = True  # Monitor for combat and alert via Discord
 COMBAT_CONFIDENCE = 0.70  # Confidence threshold for combat detection (0.0-1.0)
 COMBAT_AUTO_KILL_ROBLOX = False  # Automatically kill Roblox process if combat detected
-COMBAT_KILL_DELAY = 10  # Seconds to wait before killing Roblox (gives you time to respond)
+COMBAT_INSTANT_KILL = False  # If True, kill immediately without delay (overrides COMBAT_KILL_DELAY)
+COMBAT_KILL_DELAY = 10  # Seconds to wait before killing Roblox (gives you time to respond, ignored if COMBAT_INSTANT_KILL=True)
 
 
 # ============================================
@@ -112,6 +113,17 @@ DELETE_SCREENSHOTS_AFTER_DISCORD = True  # Delete screenshots after sending to D
 
 # Screenshot save location
 SCREENSHOT_FOLDER = "assets/screenshots"
+
+
+# ============================================
+# VIDEO RECORDING SETTINGS
+# ============================================
+# Record video when fishing issues detected (timeout or low confidence catches)
+RECORD_DETECTION_VIDEO = True  # Set to False to disable video recording
+VIDEO_DURATION = 5  # Seconds to record (5s recommended)
+VIDEO_FPS = 15  # Frames per second (15 fps = smooth + small file size, 30 fps = very smooth + larger)
+VIDEO_QUALITY = 23  # H.264 CRF quality: 0-51, lower=better (18=high quality, 23=balanced, 28=lower quality)
+DELETE_VIDEOS_AFTER_DISCORD = True  # Delete videos after sending to Discord
 
 
 # ============================================

@@ -165,6 +165,8 @@ python setup_wizard.py
 The wizard will guide you through:
 - Discord webhook setup (optional)
 - Detection sensitivity configuration
+- Combat detection and auto-kill options (instant vs delayed)
+- Kill delay customization (if delayed mode selected)
 - Eating schedule defaults
 - Screenshot settings
 
@@ -264,12 +266,16 @@ For AFK safety and combat alerts:
    ```
 
 5. **Follow the prompts:**
+   - Enter Discord webhook URL (or press Enter to use config default)
    - Enter duration in seconds (e.g., 3600 for 1 hour)
    - Enter number of food items per eating session (or press Enter for default from config)
    - Enter eating interval (or press Enter for default from config)
    - Enable debug mode (y/n) - shows detailed information
 
-6. **🚨 EMERGENCY STOP:** Press **Ctrl+Alt+M** anytime to stop immediately
+6. **🎮 HOTKEYS:**
+   - **Ctrl+Alt+M** - Emergency stop (exits program immediately)
+   - **Ctrl+,** - Pause script (temporary pause, can resume)
+   - **Ctrl+.** - Resume script (continues fishing)
 
 ---
 
@@ -283,6 +289,7 @@ For AFK safety and combat alerts:
 - ✅ **Auto-Casting** - Recasts fishing rod after configured timeout (default: 60s)
 - ✅ **Input Blocking** - Blocks your keyboard/mouse during fishing to prevent interference
 - ✅ **Safety Timeouts** - Configurable safety unblock (default: 90s)
+- ✅ **Pause/Resume Control** - Press Ctrl+, to pause, Ctrl+. to resume (Discord notifications included)
 - ✅ **Emergency Stop** - Press Ctrl+Alt+M to stop immediately and unblock input
 - ✅ **Mouse Position Restoration** - Returns mouse to original position after fishing
 
@@ -296,11 +303,15 @@ For AFK safety and combat alerts:
 ### Discord Integration
 - ✅ **Catch Notifications** - Get notified on Discord when fish are caught
 - ✅ **Screenshot Attachments** - Sends actual game screenshot with notification
+- ✅ **Video Attachments** - Records and sends 5-second MP4 videos when fishing issues detected
 - ✅ **Catch Statistics** - Shows total catches, catch breakdown by type
 - ✅ **Session Info** - Displays session duration, time since last meal, clicks
-- ✅ **Auto-cleanup** - Optionally deletes screenshots after sending to save storage
+- ✅ **Auto-cleanup** - Optionally deletes screenshots/videos after sending to save storage
 - ✅ **@Mention Support** - Tag yourself in Discord notifications for important alerts
+- ✅ **Sunken Item Alerts** - Automatic @mention when rare sunken items are caught (most valuable catches)
 - ✅ **Combat Alerts** - Sends 3 urgent @mention messages when combat detected
+- ✅ **Auto-Cast Alerts** - Notifies every auto-cast occurrence with milestone alerts every 5th cast
+- ✅ **Runtime Webhook Override** - Prompt at startup to use custom webhook URL without editing config
 
 ### Combat Detection System (AFK Safety)
 - ✅ **Background Monitoring** - Continuously checks for combat indicator every 2 seconds
@@ -310,9 +321,30 @@ For AFK safety and combat alerts:
 - ✅ **Random WASD Movement** - Simulates human evasion during combat to avoid appearing AFK
 - ✅ **10-Second Grace Period** - Countdown timer before taking action
 - ✅ **Optional Auto-Kill** - Can automatically close Roblox process after grace period
-- ✅ **Manual Mode** - Notification-only mode without auto-kill (default)
-- ✅ **Auto-Clear Logic** - Resets timer if combat indicator disappears
-- ✅ **Independent Thread** - Runs in parallel without interfering with fishing
+
+### Auto-Cast Detection & Safety
+- ✅ **Every-Time Notifications** - Discord notification sent for every auto-cast occurrence
+- ✅ **Milestone Alerts** - Special @mention alerts every 5th auto-cast (5, 10, 15, 20...)
+- ✅ **Automatic Pause at Milestones** - Script auto-pauses at every 5th auto-cast for investigation
+- ✅ **Resume Instructions** - Console and Discord notifications display clear instructions to press Ctrl+. to resume
+- ✅ **Screenshot Attachments** - Sends game screenshot with each auto-cast notification
+- ✅ **Session Statistics** - Shows auto-cast count, session duration, total catches in alerts
+
+### Video Recording System
+- ✅ **Automatic Recording** - Records 5-second MP4 videos when fishing detection issues occur
+- ✅ **H.264 Compression** - Efficient compression (1-3MB per 5s video at 15 FPS)
+- ✅ **Non-Blocking Threads** - Records in background without affecting fishing performance
+- ✅ **Discord Upload** - Automatically uploads videos to Discord webhook (30s timeout)
+- ✅ **Configurable Settings** - Customize duration (1-30s), FPS (5-60), quality (CRF 0-51)
+- ✅ **Auto-Cleanup** - Optionally deletes videos after Discord upload to save storage
+- ✅ **Screenshot Fallback** - Falls back to screenshot if video recording fails
+
+### Catch-Specific Alerts
+- ✅ **Sunken Item @Mentions** - Automatically mentions you when rare sunken items are caught
+- ✅ **Priority Notifications** - Sunken items get special alert status (most valuable loot)
+- ✅ **Catch Type Detection** - Distinguishes between fish, treasure, sunken items, and junk
+- ✅ **Separate Statistics** - Tracks each catch type independently for detailed analytics
+- ✅ **Discord Embeds** - Rich embeds with catch type, confidence, and session stats
 
 ### Safety Features
 - ✅ **Configurable Safety Timeout** - Force-unblocks input after configured time (default: 90s)
@@ -320,8 +352,17 @@ For AFK safety and combat alerts:
 - ✅ **Input Unblocking** - Always unblocks input even if script crashes
 - ✅ **Window Restoration** - Returns focus to your previous window after actions
 - ✅ **Mouse Position Restore** - Returns cursor to original position
+- ✅ **Pause/Resume System** - Temporarily pause script without exiting (Ctrl+, / Ctrl+.)
 - ✅ **Emergency Stop** - Works even when input is blocked (requires admin)
 - ✅ **Try-Finally Blocks** - Ensures cleanup always happens
+
+### Control Features
+- ✅ **Pause Script** - Press Ctrl+, to temporarily pause fishing and eating
+- ✅ **Resume Script** - Press Ctrl+. to continue from where you paused
+- ✅ **Discord Pause Notifications** - Get notified on Discord when script pauses (yellow embed)
+- ✅ **Discord Resume Notifications** - Get notified on Discord when script resumes (green embed)
+- ✅ **Non-Destructive Pause** - Pausing doesn't exit the program, just suspends activities
+- ✅ **Combined with Combat** - Works alongside combat detection system
 
 ### Advanced Features
 - ✅ **Template Matching** - OpenCV-based image detection
@@ -349,12 +390,25 @@ MENTION_ON_COMBAT_DETECTED = True  # Mention you when combat detected
 MENTION_ON_AUTO_KILL = True  # Mention you when Roblox auto-killed
 ```
 
+**@Mention Behavior:**
+- **Sunken Items**: Always mentions you (most valuable/rare catches)
+- **Combat Detection**: Mentions you if `MENTION_ON_COMBAT_DETECTED = True`
+- **Auto-Cast Milestones**: Mentions you every 5th auto-cast (5, 10, 15, 20...)
+- **Auto-Kill**: Mentions you if `MENTION_ON_AUTO_KILL = True` and Roblox is closed
+
+**Getting Your Discord User ID:**
+1. Enable Developer Mode: User Settings > Advanced > Developer Mode
+2. Right-click your profile anywhere in Discord
+3. Click "Copy User ID"
+4. Paste into `DISCORD_MENTION_USER_ID` in config.py
+
 #### Combat Detection Settings
 ```python
 ENABLE_COMBAT_DETECTION = True  # Enable combat monitoring
 COMBAT_CONFIDENCE = 0.70  # Combat indicator detection threshold
 COMBAT_AUTO_KILL_ROBLOX = False  # Kill Roblox on combat (default: disabled)
-COMBAT_KILL_DELAY = 10  # Seconds before killing process
+COMBAT_INSTANT_KILL = False  # Instant kill without delay (default: disabled)
+COMBAT_KILL_DELAY = 10  # Seconds before killing process (ignored if instant kill enabled)
 ```
 
 **How Combat Detection Works:**
@@ -366,10 +420,16 @@ COMBAT_KILL_DELAY = 10  # Seconds before killing process
    - Sets `combat_active` flag to pause fishing and eating
    - Starts random WASD movement thread (simulates evasion)
 3. During combat: Randomly presses W/A/S/D keys (0.3-1.2s hold, 0.5-2.0s intervals)
-4. After 10-second countdown, optionally closes Roblox (if enabled)
+4. **Kill Options:**
+   - **Instant Kill** (`COMBAT_INSTANT_KILL = True`): Closes Roblox **immediately** with no delay
+   - **Delayed Kill** (`COMBAT_INSTANT_KILL = False`): Waits configured delay (default 10s) before closing
+   - **No Kill** (`COMBAT_AUTO_KILL_ROBLOX = False`): Notifications only, game stays open
 5. If combat clears naturally: Clears flag, resumes fishing/eating, stops movement
 
-**⚠️ SAFETY:** Auto-kill is **disabled by default** to prevent accidental game closures. Only enable if you want the macro to force-close Roblox when combat is detected.
+**⚠️ SAFETY:** 
+- Auto-kill is **disabled by default** to prevent accidental game closures
+- Instant kill is **disabled by default** for maximum safety
+- Configure kill delay in setup wizard or config.py (1-999 seconds)
 
 #### Detection Settings
 ```python
@@ -405,6 +465,39 @@ CRITICAL_SAFETY_TIMEOUT = 90  # Force unblock after 90s
 SAVE_DETECTION_SCREENSHOTS = True   # Save screenshots
 DELETE_SCREENSHOTS_AFTER_DISCORD = True  # Delete after sending
 ```
+
+#### Video Recording Settings
+```python
+RECORD_DETECTION_VIDEO = True  # Enable video recording for fishing issues
+VIDEO_DURATION = 5  # Seconds to record (1-30s)
+VIDEO_FPS = 15  # Frames per second (5-60 FPS)
+VIDEO_QUALITY = 23  # H.264 CRF quality (0-51, lower=better)
+DELETE_VIDEOS_AFTER_DISCORD = True  # Delete videos after Discord upload
+```
+
+**Video Quality Guide:**
+- **CRF 18**: High quality, larger files (~3-5MB per 5s)
+- **CRF 23**: Balanced quality/size (~1-3MB per 5s) [RECOMMENDED]
+- **CRF 28**: Lower quality, smaller files (~0.5-1.5MB per 5s)
+
+**FPS Guide:**
+- **10 FPS**: Lower quality, smallest files
+- **15 FPS**: Smooth, good balance [RECOMMENDED]
+- **30 FPS**: Very smooth, larger files
+
+### Runtime Webhook Override
+
+At startup, the macro prompts you to enter a Discord webhook URL:
+- **Press Enter** - Uses the webhook from `config.py` (default)
+- **Paste a URL** - Uses the custom webhook for this session only
+
+**Use Cases:**
+- Testing with a different Discord channel without editing config
+- Using different webhooks for different fishing sessions
+- Temporary override for testing notifications
+- Quick webhook changes without reconfiguration
+
+**Note:** Pause/resume hotkey notifications always use the webhook from `config.py` (global scope limitation).
 
 ### Adjusting Detection Sensitivity
 
@@ -442,6 +535,47 @@ If the macro is:
 3. Clicks rapidly at center of screen (configurable speed)
 4. Detection thread watches for caught visual in background (fish, treasure, sunken, junk)
 5. Stops when caught detected or timeout reached
+
+### Pause/Resume System
+
+The pause/resume feature provides temporary control without exiting the program:
+
+**How Pause Works (Ctrl+,):**
+1. Keyboard hook detects Ctrl+, combination
+2. Sets global `script_paused` flag to `True`
+3. Sends yellow Discord notification (color: 16776960)
+4. Main loop checks flag at start of each iteration
+5. While paused: Skips fishing detection, clicking, and eating
+6. Sleeps for 1 second per iteration to reduce CPU usage
+7. Debug output shows "Script paused - waiting..." if enabled
+
+**How Resume Works (Ctrl+.):**
+1. Keyboard hook detects Ctrl+. combination
+2. Sets global `script_paused` flag to `False`
+3. Sends green Discord notification (color: 5763719)
+4. Main loop resumes normal fishing and eating operations
+5. Debug output shows "Script resumed" if enabled
+
+**Auto-Pause at Auto-Cast Milestones:**
+- Script automatically pauses when auto-cast count reaches multiples of 5 (5, 10, 15, 20...)
+- Sends urgent Discord notification with @mention and troubleshooting tips
+- Displays clear console message with resume instructions
+- Prevents wasting time if detection is failing or wrong fishing location
+- Must press **Ctrl+.** to resume after investigating the issue
+
+**Integration with Other Systems:**
+- Works alongside combat detection (both can pause script)
+- Doesn't interfere with emergency stop (Ctrl+Alt+M)
+- Respects all safety timeouts and input blocking
+- Discord notifications keep you informed of script state
+
+**Use Cases:**
+- Taking a break without stopping the entire program
+- Responding to in-game chat or events
+- Checking inventory or adjusting position
+- Testing if script is causing issues
+- Remote monitoring via Discord notifications
+- Investigating why auto-cast is happening repeatedly
 
 ---
 
@@ -495,12 +629,78 @@ If the macro is:
 - Hook bypasses `BlockInput` but needs admin privileges
 - Alternative: Close PowerShell window (input will unblock)
 
+### Pause/resume hotkeys not working
+**Problem:** Ctrl+, or Ctrl+. doesn't pause/resume the script
+**Solutions:**
+- **Run PowerShell as Administrator** (required for keyboard hooks)
+- Check if Ctrl key is working properly on your keyboard
+- Make sure you're pressing the comma (,) and period (.) keys, not < or >
+- Enable debug mode to see if keypresses are being detected
+- Check console output for "Script paused" or "Script resumed" messages
+
+### Script won't resume after pausing
+**Problem:** Pressed Ctrl+. but script still paused
+**Solutions:**
+- Try pressing Ctrl+. again (may need to register)
+- Check Discord for resume notification to confirm it worked
+- Enable debug mode to see current pause state
+- Check console shows "Script resumed" message
+- As last resort, use Ctrl+Alt+M emergency stop and restart
+
+### Pause notification not appearing in Discord
+**Problem:** Script pauses but no Discord notification
+**Solutions:**
+- Verify `ENABLE_DISCORD_NOTIFICATIONS = True` in config.py
+- Check Discord webhook URL is correct
+- Test webhook with a catch notification first
+- Check console for "Discord notification sent" messages
+- Webhook may be rate-limited (small delay between messages)
+
 ### Combat detection behavior
 - **Fresh screenshots**: Each of the 3 Discord messages gets a newly captured screenshot for real-time updates
 - **Macro pausing**: Fishing and eating automatically stop when combat detected, resume when cleared
 - **Random movement**: WASD keys pressed randomly (0.3-1.2s hold, 0.5-2.0s intervals) to simulate human evasion
 - **Movement stops**: Random movement automatically stops when combat clears
 - **Debug logs**: Enable debug mode to see detailed movement actions (which keys, durations)
+
+### Auto-cast milestone pause behavior
+**Problem:** Script keeps auto-pausing at multiples of 5 auto-casts
+**This is intentional!** The script auto-pauses to alert you of potential issues:
+
+**Why it pauses:**
+- Auto-casting means no fish bites are being detected
+- Could indicate wrong fishing location, bad detection images, or game issues
+- Prevents wasting hours fishing in the wrong spot
+
+**What to check when paused:**
+1. Are you in the correct fishing location?
+2. Are detection images matching your game resolution?
+3. Is the fishing bite indicator actually appearing?
+4. Check `POINT_CONFIDENCE` - may need adjustment
+5. Look at the Discord screenshot to see what game looks like
+
+**How to continue:**
+- Press **Ctrl+.** to resume if everything looks correct
+- Or press **Ctrl+Alt+M** to emergency stop and investigate further
+
+### Video recording not working
+**Problem:** Videos not being created or uploaded to Discord
+**Solutions:**
+- Check `RECORD_DETECTION_VIDEO = True` in config.py
+- Ensure OpenCV is installed: `pip install opencv-python`
+- Videos only record when detection **issues** occur (timeout or low confidence)
+- Check screenshot folder for .mp4 files
+- Enable debug mode to see video recording status
+- Increase `VIDEO_DURATION` if videos seem too short
+
+### Runtime webhook override not working
+**Problem:** Custom webhook URL not being used
+**Solutions:**
+- Make sure you pasted the full webhook URL at startup prompt
+- Verify the URL starts with `https://discord.com/api/webhooks/`
+- Check console output confirms "Using custom webhook"
+- Test the webhook manually to ensure it's valid
+- Note: Pause/resume notifications always use config webhook (limitation)
 
 ---
 
@@ -615,6 +815,23 @@ A: Yes, set `SAVE_DETECTION_SCREENSHOTS = False` in config.py.
 
 **Q: How do I stop the macro?**
 A: Press Ctrl+Alt+M (emergency stop) or close the PowerShell window.
+
+**Q: What's the difference between pause and emergency stop?**
+A: 
+- **Pause (Ctrl+,)**: Temporarily suspends fishing and eating, but keeps program running. Use when you need to step away briefly.
+- **Emergency Stop (Ctrl+Alt+M)**: Completely exits the program and unblocks input immediately. Use for emergencies or when done fishing.
+
+**Q: Can I resume the macro after pausing?**
+A: Yes! Press Ctrl+. to resume. The macro will continue fishing and eating from where it left off.
+
+**Q: Do I get Discord notifications when I pause/resume?**
+A: Yes! Pausing sends a yellow Discord notification, resuming sends a green notification. This helps you track script state remotely.
+
+**Q: What happens when the script is paused?**
+A: The macro stops all activities (fishing detection, clicking, eating) and enters a waiting state. It checks every second if you've resumed.
+
+**Q: Can I pause while combat detection is active?**
+A: Yes! The pause system works independently. You can pause even during combat, and both systems will coordinate properly.
 
 ---
 
@@ -1158,6 +1375,18 @@ A: Each screenshot is freshly captured at the moment of sending, giving you real
 
 **Q: Why does the macro move WASD during combat?**
 A: To simulate human evasion behavior and avoid appearing as an AFK bot. The random movements (0.3-1.2s holds with 0.5-2.0s intervals) make it look like a player trying to escape combat.
+
+**Q: What is instant kill mode?**
+A: When `COMBAT_INSTANT_KILL = True`, Roblox closes **immediately** when combat is detected with no delay. This is the fastest response option but gives you no time to react manually.
+
+**Q: Can I change the 10-second kill delay?**
+A: Yes! The kill delay is configurable. Set it in the setup wizard or change `COMBAT_KILL_DELAY` in config.py (1-999 seconds). Note: This is ignored if instant kill mode is enabled.
+
+**Q: When should I use instant kill vs delayed kill?**
+A: 
+- **Instant kill**: Best for high-risk areas where every second counts. No delay means no chance for damage.
+- **Delayed kill**: Safer option that gives you time to assess if the combat warning is legitimate before Roblox closes. Recommended for beginners.
+- **No kill**: Just notifications, no automatic closure. You handle combat manually.
 
 **Q: What happens if I don't set Discord User ID?**
 A: Discord notifications work but won't @mention you (less noticeable).
