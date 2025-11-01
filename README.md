@@ -324,11 +324,13 @@ For AFK safety and combat alerts:
 
 ### Auto-Cast Detection & Safety
 - ✅ **Every-Time Notifications** - Discord notification sent for every auto-cast occurrence
-- ✅ **Milestone Alerts** - Special @mention alerts every 5th auto-cast (5, 10, 15, 20...)
-- ✅ **Automatic Pause at Milestones** - Script auto-pauses at every 5th auto-cast for investigation
+- ✅ **Consecutive Detection Counter** - Tracks consecutive auto-casts without catching anything
+- ✅ **Smart Auto-Pause** - Script pauses after 5 consecutive no-detections (resets on any catch)
+- ✅ **Progress Indicators** - Shows "Consecutive: 3/5" in console and Discord to track toward threshold
+- ✅ **Milestone Alerts** - Special @mention alerts when 5 consecutive failures reached
 - ✅ **Resume Instructions** - Console and Discord notifications display clear instructions to press Ctrl+. to resume
 - ✅ **Screenshot Attachments** - Sends game screenshot with each auto-cast notification
-- ✅ **Session Statistics** - Shows auto-cast count, session duration, total catches in alerts
+- ✅ **Session Statistics** - Shows consecutive count, total auto-cast count, session duration, total catches in alerts
 
 ### Video Recording System
 - ✅ **Automatic Recording** - Records 5-second MP4 videos when fishing detection issues occur
@@ -361,6 +363,8 @@ For AFK safety and combat alerts:
 - ✅ **Resume Script** - Press Ctrl+. to continue from where you paused
 - ✅ **Discord Pause Notifications** - Get notified on Discord when script pauses (yellow embed)
 - ✅ **Discord Resume Notifications** - Get notified on Discord when script resumes (green embed)
+- ✅ **Periodic Pause Updates** - Sends screenshot every 60 seconds while paused with session statistics
+- ✅ **Remote Monitoring** - See game state and progress while script is paused via Discord
 - ✅ **Non-Destructive Pause** - Pausing doesn't exit the program, just suspends activities
 - ✅ **Combined with Combat** - Works alongside combat detection system
 
@@ -543,11 +547,24 @@ The pause/resume feature provides temporary control without exiting the program:
 **How Pause Works (Ctrl+,):**
 1. Keyboard hook detects Ctrl+, combination
 2. Sets global `script_paused` flag to `True`
-3. Sends yellow Discord notification (color: 16776960)
+3. Sends initial yellow Discord notification (color: 16776960)
 4. Main loop checks flag at start of each iteration
 5. While paused: Skips fishing detection, clicking, and eating
-6. Sleeps for 1 second per iteration to reduce CPU usage
-7. Debug output shows "Script paused - waiting..." if enabled
+6. **Periodic Updates**: Every 60 seconds, sends screenshot with statistics to Discord
+7. Sleeps for 1 second per iteration to reduce CPU usage
+8. Debug output shows "Script paused - waiting..." if enabled
+
+**Periodic Pause Status Updates (Every 60s):**
+- Captures fresh screenshot of game window
+- Sends to Discord with yellow embed titled "⏸️ Script Still Paused - Status Update"
+- **Statistics Included:**
+  - Session Duration (how long macro has been running)
+  - Total Catches (number of fish caught)
+  - Total Detections (point detection count)
+  - Auto-Cast Count (total auto-casts)
+  - Consecutive No-Detections (progress toward auto-pause: X/5)
+- Screenshot auto-deleted after sending (if configured)
+- Helps you monitor game state remotely while paused
 
 **How Resume Works (Ctrl+.):**
 1. Keyboard hook detects Ctrl+. combination
@@ -556,12 +573,15 @@ The pause/resume feature provides temporary control without exiting the program:
 4. Main loop resumes normal fishing and eating operations
 5. Debug output shows "Script resumed" if enabled
 
-**Auto-Pause at Auto-Cast Milestones:**
-- Script automatically pauses when auto-cast count reaches multiples of 5 (5, 10, 15, 20...)
-- Sends urgent Discord notification with @mention and troubleshooting tips
+**Auto-Pause on Consecutive No-Detections:**
+- Script automatically pauses when **5 consecutive auto-casts** occur without catching anything
+- Counter increments on each auto-cast, **resets to 0** on every successful catch
+- Displays "Consecutive: X/5" in console and Discord notifications to track progress
+- Sends urgent Discord notification with @mention when threshold reached
 - Displays clear console message with resume instructions
 - Prevents wasting time if detection is failing or wrong fishing location
 - Must press **Ctrl+.** to resume after investigating the issue
+- **Smarter than total count**: Won't pause if you're catching fish between auto-casts
 
 **Integration with Other Systems:**
 - Works alongside combat detection (both can pause script)
@@ -576,6 +596,9 @@ The pause/resume feature provides temporary control without exiting the program:
 - Testing if script is causing issues
 - Remote monitoring via Discord notifications
 - Investigating why auto-cast is happening repeatedly
+- **Remote oversight**: See game state every 60s without being at computer
+- **Progress tracking**: Check statistics while paused to decide if resume needed
+- **Safety checks**: Verify character position and surroundings via screenshots
 
 ---
 
@@ -663,14 +686,40 @@ The pause/resume feature provides temporary control without exiting the program:
 - **Movement stops**: Random movement automatically stops when combat clears
 - **Debug logs**: Enable debug mode to see detailed movement actions (which keys, durations)
 
-### Auto-cast milestone pause behavior
-**Problem:** Script keeps auto-pausing at multiples of 5 auto-casts
+### Auto-pause after consecutive no-detections
+**Problem:** Script auto-paused after 5 consecutive auto-casts without catching anything
 **This is intentional!** The script auto-pauses to alert you of potential issues:
 
+**How the consecutive counter works:**
+- Counter increments by 1 each time auto-cast happens (no fish bite detected)
+- Counter **resets to 0** whenever a fish is successfully caught
+- Script auto-pauses when counter reaches **5 consecutive failures**
+- This means: 5 auto-casts in a row without catching anything
+
+**Example scenarios:**
+- ✅ **Won't pause:** Auto-cast → Catch → Auto-cast → Catch → Auto-cast → Catch (counter keeps resetting)
+- ❌ **Will pause:** Auto-cast → Auto-cast → Auto-cast → Auto-cast → Auto-cast (5 consecutive, counter reaches 5)
+- ✅ **Won't pause:** Auto-cast → Auto-cast → Auto-cast → Catch → Auto-cast → Auto-cast (counter reset by catch)
+
+**Console output example:**
+```
+[AUTO-CAST] No detection for 60s. Casting rod... (Auto-cast #3, Consecutive: 1/5)
+[AUTO-CAST] No detection for 60s. Casting rod... (Auto-cast #4, Consecutive: 2/5)
+[CAUGHT] Fish caught! (Counter resets to 0)
+[AUTO-CAST] No detection for 60s. Casting rod... (Auto-cast #5, Consecutive: 1/5)
+[AUTO-CAST] No detection for 60s. Casting rod... (Auto-cast #6, Consecutive: 2/5)
+[AUTO-CAST] No detection for 60s. Casting rod... (Auto-cast #7, Consecutive: 3/5)
+[AUTO-CAST] No detection for 60s. Casting rod... (Auto-cast #8, Consecutive: 4/5)
+[AUTO-CAST] No detection for 60s. Casting rod... (Auto-cast #9, Consecutive: 5/5)
+🚨 ALERT: 5 consecutive no-detections - triggering auto-pause
+⏸️  SCRIPT AUTO-PAUSED
+```
+
 **Why it pauses:**
-- Auto-casting means no fish bites are being detected
+- 5 consecutive failures suggests something is wrong
 - Could indicate wrong fishing location, bad detection images, or game issues
 - Prevents wasting hours fishing in the wrong spot
+- Smarter than pausing every 5th auto-cast regardless of catches
 
 **What to check when paused:**
 1. Are you in the correct fishing location?
@@ -681,6 +730,8 @@ The pause/resume feature provides temporary control without exiting the program:
 
 **How to continue:**
 - Press **Ctrl+.** to resume if everything looks correct
+- Counter will continue from current value
+- Catching a fish will reset the counter back to 0
 - Or press **Ctrl+Alt+M** to emergency stop and investigate further
 
 ### Video recording not working
@@ -832,6 +883,25 @@ A: The macro stops all activities (fishing detection, clicking, eating) and ente
 
 **Q: Can I pause while combat detection is active?**
 A: Yes! The pause system works independently. You can pause even during combat, and both systems will coordinate properly.
+
+**Q: What's the difference between total auto-cast count and consecutive no-detections?**
+A:
+- **Total Auto-Cast Count**: Total number of times the script auto-cast throughout the entire session (never resets)
+- **Consecutive No-Detections**: Number of auto-casts in a row without catching anything (resets to 0 on each catch)
+- Example: If you have 20 total auto-casts but caught fish between them, consecutive count stays low
+- Auto-pause triggers at **5 consecutive**, not 5 total
+
+**Q: Why did my script auto-pause when I'm catching fish?**
+A: The script only pauses after **5 consecutive no-detections** (5 auto-casts in a row without catching). If you're catching fish between auto-casts, the counter resets and won't trigger auto-pause. Check the console output for "Consecutive: X/5" to track the counter.
+
+**Q: Can I change the consecutive no-detection threshold?**
+A: Currently it's hardcoded to 5. You can modify the code by changing `if self.consecutive_no_detection >= 5` to a different number in the auto-cast section.
+
+**Q: How often are periodic pause screenshots sent to Discord?**
+A: By default, screenshots are sent every 60 seconds while the script is paused. This includes the current game view and session statistics (catches, detections, auto-cast count, consecutive no-detections). This helps you monitor the game remotely without being at your computer.
+
+**Q: Can I disable the periodic pause screenshots?**
+A: Currently the feature is always enabled when Discord notifications are active. You can modify the code by commenting out the periodic screenshot section in the pause loop if desired.
 
 ---
 

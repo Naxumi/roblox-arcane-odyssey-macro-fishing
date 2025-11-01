@@ -13,6 +13,7 @@ from PIL import Image
 import time
 from ctypes import windll, Structure, c_long, c_ulong, sizeof, byref
 import ctypes
+from ctypes import wintypes  # For MSG structure in message loop
 import threading
 import sys
 import random
@@ -51,6 +52,27 @@ def block_input():
 def unblock_input():
     """Unblock all keyboard and mouse input"""
     return ctypes.windll.user32.BlockInput(False)
+
+def safe_set_cursor_pos(pos):
+    """Safely set cursor position with validation"""
+    try:
+        if pos and isinstance(pos, (tuple, list)) and len(pos) == 2:
+            x, y = pos
+            # Validate coordinates are reasonable (within screen bounds)
+            # Get screen dimensions
+            screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+            screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+            
+            # Clamp coordinates to screen bounds
+            x = max(0, min(x, screen_width - 1))
+            y = max(0, min(y, screen_height - 1))
+            
+            win32api.SetCursorPos((int(x), int(y)))
+            return True
+    except Exception as e:
+        print(f"[WARNING] Failed to set cursor position to {pos}: {e}")
+        return False
+    return False
 
 # ============================================
 # CONFIGURATION LOADING
@@ -174,6 +196,92 @@ class KBDLLHOOKSTRUCT(Structure):
         ("dwExtraInfo", ctypes.POINTER(c_ulong))
     ]
 
+def check_hotkey_combinations():
+    """Check for hotkey combinations - called after every key state change"""
+    global emergency_stop, input_currently_blocked, script_paused
+    global ctrl_pressed, alt_pressed, m_pressed, comma_pressed, period_pressed
+    
+    # Check for Ctrl+, (pause script)
+    if ctrl_pressed and comma_pressed and not script_paused:
+        print(f"\n[HOTKEY] Ctrl+, detected - PAUSING SCRIPT")
+        print("\n" + "=" * 50)
+        print("⏸️  SCRIPT PAUSED (Ctrl+,)")
+        print("=" * 50)
+        script_paused = True
+        print("[PAUSE] Script paused - press Ctrl+. to resume")
+        
+        # Send Discord notification about pause
+        if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
+            def send_pause_notification():
+                try:
+                    embed = {
+                        "title": "⏸️ Script Paused",
+                        "description": "Fishing macro has been paused via Ctrl+, hotkey",
+                        "color": 16776960,  # Yellow
+                        "fields": [
+                            {
+                                "name": "📌 Status",
+                                "value": "Paused - Press Ctrl+. to resume",
+                                "inline": False
+                            }
+                        ],
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                    }
+                    send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                except Exception as e:
+                    print(f"[HOOK DEBUG] Error in pause notification: {e}")
+            threading.Thread(target=send_pause_notification, daemon=True).start()
+    
+    # Check for Ctrl+. (resume script)
+    elif ctrl_pressed and period_pressed and script_paused:
+        print(f"\n[HOTKEY] Ctrl+. detected - RESUMING SCRIPT")
+        print("\n" + "=" * 50)
+        print("▶️  SCRIPT RESUMED (Ctrl+.)")
+        print("=" * 50)
+        script_paused = False
+        print("[RESUME] Script resumed - fishing continues")
+        
+        # Send Discord notification about resume
+        if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
+            def send_resume_notification():
+                try:
+                    embed = {
+                        "title": "▶️ Script Resumed",
+                        "description": "Fishing macro has been resumed via Ctrl+. hotkey",
+                        "color": 5763719,  # Green
+                        "fields": [
+                            {
+                                "name": "📌 Status",
+                                "value": "Active - Fishing continues",
+                                "inline": False
+                            }
+                        ],
+                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                    }
+                    send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                except Exception as e:
+                    print(f"[HOOK DEBUG] Error in resume notification: {e}")
+            threading.Thread(target=send_resume_notification, daemon=True).start()
+    
+    # Check for Ctrl+Alt+M combination (emergency stop)
+    elif ctrl_pressed and alt_pressed and m_pressed:
+        print(f"\n[HOOK DEBUG] Ctrl+Alt+M combination detected!")
+        if not emergency_stop:
+            print("\n" + "=" * 50)
+            print("🚨 EMERGENCY STOP ACTIVATED (Ctrl+Alt+M)! 🚨")
+            print("=" * 50)
+            emergency_stop = True
+            
+            # Immediately unblock input
+            if input_currently_blocked:
+                print("[EMERGENCY] Attempting to unblock input...")
+                unblock_result = unblock_input()
+                print(f"[EMERGENCY] UnblockInput() returned: {unblock_result}")
+                input_currently_blocked = False
+                print("[EMERGENCY] Input unblocked!")
+            
+            print("[EMERGENCY] Program will stop safely...")
+
 def keyboard_hook_callback(nCode, wParam, lParam):
     """Low-level keyboard hook callback - this bypasses BlockInput!"""
     global emergency_stop, input_currently_blocked, script_paused
@@ -183,17 +291,24 @@ def keyboard_hook_callback(nCode, wParam, lParam):
         kb_struct = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
         vk_code = kb_struct.vkCode
         
-        VK_CONTROL = 0x11
-        VK_MENU = 0x12  # ALT key
+        # Virtual key codes - include both generic and specific variants
+        VK_CONTROL = 0x11       # Generic Ctrl
+        VK_LCONTROL = 0xA2      # Left Ctrl (specific)
+        VK_RCONTROL = 0xA3      # Right Ctrl (specific)
+        VK_MENU = 0x12          # Generic ALT key
+        VK_LMENU = 0xA4         # Left Alt (specific)
+        VK_RMENU = 0xA5         # Right Alt (specific)
         VK_M = 0x4D
-        VK_COMMA = 0xBC  # , key
-        VK_PERIOD = 0xBE  # . key
+        VK_COMMA = 0xBC         # , key
+        VK_PERIOD = 0xBE        # . key
         
         # Track key down/up
         if wParam == WM_KEYDOWN or wParam == WM_SYSKEYDOWN:
-            if vk_code == VK_CONTROL:
+            # Track Ctrl key (any variant)
+            if vk_code in (VK_CONTROL, VK_LCONTROL, VK_RCONTROL):
                 ctrl_pressed = True
-            elif vk_code == VK_MENU:
+            # Track Alt key (any variant)
+            elif vk_code in (VK_MENU, VK_LMENU, VK_RMENU):
                 alt_pressed = True
             elif vk_code == VK_M:
                 m_pressed = True
@@ -202,86 +317,16 @@ def keyboard_hook_callback(nCode, wParam, lParam):
             elif vk_code == VK_PERIOD:
                 period_pressed = True
             
-            # Check for Ctrl+, (pause script)
-            if ctrl_pressed and comma_pressed and not script_paused:
-                print(f"\n[HOTKEY] Ctrl+, detected - PAUSING SCRIPT")
-                print("\n" + "=" * 50)
-                print("⏸️  SCRIPT PAUSED (Ctrl+,)")
-                print("=" * 50)
-                script_paused = True
-                print("[PAUSE] Script paused - press Ctrl+. to resume")
-                
-                # Send Discord notification about pause
-                if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
-                    def send_pause_notification():
-                        embed = {
-                            "title": "⏸️ Script Paused",
-                            "description": "Fishing macro has been paused via Ctrl+, hotkey",
-                            "color": 16776960,  # Yellow
-                            "fields": [
-                                {
-                                    "name": "📌 Status",
-                                    "value": "Paused - Press Ctrl+. to resume",
-                                    "inline": False
-                                }
-                            ],
-                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                        }
-                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
-                    threading.Thread(target=send_pause_notification, daemon=True).start()
-            
-            # Check for Ctrl+. (resume script)
-            if ctrl_pressed and period_pressed and script_paused:
-                print(f"\n[HOTKEY] Ctrl+. detected - RESUMING SCRIPT")
-                print("\n" + "=" * 50)
-                print("▶️  SCRIPT RESUMED (Ctrl+.)")
-                print("=" * 50)
-                script_paused = False
-                print("[RESUME] Script resumed - fishing continues")
-                
-                # Send Discord notification about resume
-                if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
-                    def send_resume_notification():
-                        embed = {
-                            "title": "▶️ Script Resumed",
-                            "description": "Fishing macro has been resumed via Ctrl+. hotkey",
-                            "color": 5763719,  # Green
-                            "fields": [
-                                {
-                                    "name": "📌 Status",
-                                    "value": "Active - Fishing continues",
-                                    "inline": False
-                                }
-                            ],
-                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-                        }
-                        send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
-                    threading.Thread(target=send_resume_notification, daemon=True).start()
-            
-            # Check for Ctrl+Alt+M combination
-            if ctrl_pressed and alt_pressed and m_pressed:
-                print(f"\n[HOOK DEBUG] Ctrl+Alt+M combination detected!")
-                if not emergency_stop:
-                    print("\n" + "=" * 50)
-                    print("🚨 EMERGENCY STOP ACTIVATED (Ctrl+Alt+M)! 🚨")
-                    print("=" * 50)
-                    emergency_stop = True
-                    
-                    # Immediately unblock input
-                    if input_currently_blocked:
-                        print("[EMERGENCY] Attempting to unblock input...")
-                        unblock_result = unblock_input()
-                        print(f"[EMERGENCY] UnblockInput() returned: {unblock_result}")
-                        input_currently_blocked = False
-                        print("[EMERGENCY] Input unblocked!")
-                    
-                    print("[EMERGENCY] Program will stop safely...")
+            # Check for hotkey combinations after key press
+            check_hotkey_combinations()
         
         elif wParam == WM_KEYUP or wParam == WM_SYSKEYUP:
             # Track key releases
-            if vk_code == VK_CONTROL:
+            # Release Ctrl key (any variant)
+            if vk_code in (VK_CONTROL, VK_LCONTROL, VK_RCONTROL):
                 ctrl_pressed = False
-            elif vk_code == VK_MENU:
+            # Release Alt key (any variant)
+            elif vk_code in (VK_MENU, VK_LMENU, VK_RMENU):
                 alt_pressed = False
             elif vk_code == VK_M:
                 m_pressed = False
@@ -289,6 +334,9 @@ def keyboard_hook_callback(nCode, wParam, lParam):
                 comma_pressed = False
             elif vk_code == VK_PERIOD:
                 period_pressed = False
+            
+            # Check for hotkey combinations after key release (in case keys held)
+            check_hotkey_combinations()
     
     # Call next hook in chain
     return ctypes.windll.user32.CallNextHookEx(None, nCode, wParam, lParam)
@@ -299,7 +347,7 @@ keyboard_hook_pointer = HOOKPROC(keyboard_hook_callback)
 
 def emergency_stop_listener():
     """Listen for Ctrl+Alt+M using low-level keyboard hook (bypasses BlockInput!)"""
-    global emergency_stop, keyboard_hook
+    global emergency_stop, keyboard_hook, script_paused
     global ctrl_pressed, alt_pressed, m_pressed, config_phase_complete
     
     print("[EMERGENCY LISTENER] Thread started - installing low-level keyboard hook")
@@ -308,32 +356,71 @@ def emergency_stop_listener():
     print()
     
     try:
-        # Install low-level keyboard hook
-        keyboard_hook = ctypes.windll.user32.SetWindowsHookExA(
+        # Install low-level keyboard hook (using Unicode version for consistency)
+        # NOTE: For WH_KEYBOARD_LL, hMod parameter MUST be NULL (not a module handle)
+        # Low-level hooks are implemented as callbacks, not DLL functions
+        keyboard_hook = ctypes.windll.user32.SetWindowsHookExW(
             WH_KEYBOARD_LL,
             keyboard_hook_pointer,
-            ctypes.windll.kernel32.GetModuleHandleW(None),
+            None,  # hMod must be NULL for low-level hooks!
             0
         )
         
         if not keyboard_hook:
-            # print("[ERROR] Failed to install keyboard hook!")
+            # Get detailed Windows error information
+            error_code = ctypes.windll.kernel32.GetLastError()
+            error_messages = {
+                0: "ERROR_SUCCESS (but hook still returned NULL)",
+                126: "ERROR_MOD_NOT_FOUND - Module not found (API version mismatch - fixed!)",
+                1428: "ERROR_HOOK_NEEDS_HMOD - Module handle required for this hook type",
+                1429: "ERROR_INVALID_HOOK_HANDLE - Invalid hook handle",
+                87: "ERROR_INVALID_PARAMETER - Invalid parameter passed to SetWindowsHookEx",
+                5: "ERROR_ACCESS_DENIED - Access denied (Administrator privileges required)",
+                8: "ERROR_NOT_ENOUGH_MEMORY - Not enough memory",
+                6: "ERROR_INVALID_HANDLE - Invalid handle"
+            }
+            error_msg = error_messages.get(error_code, f"Unknown Windows error code: {error_code}")
+            
+            print(f"[HOOK ERROR] ❌ Failed to install keyboard hook!")
+            print(f"[HOOK ERROR] Windows Error Code: {error_code}")
+            print(f"[HOOK ERROR] Description: {error_msg}")
+            print(f"[HOOK ERROR] ")
+            print(f"[HOOK ERROR] This is most likely caused by:")
+            print(f"[HOOK ERROR]   1. ⚠️  NOT running as Administrator (most common)")
+            print(f"[HOOK ERROR]      Solution: Close PowerShell, right-click → 'Run as Administrator'")
+            print(f"[HOOK ERROR]   2. Anti-virus blocking keyboard hooks (security feature)")
+            print(f"[HOOK ERROR]      Solution: Add script to AV whitelist or temporarily disable AV")
+            print(f"[HOOK ERROR]   3. Another application conflicting with hooks")
+            print(f"[HOOK ERROR]      Solution: Close Discord overlay, OBS, game overlays, etc.")
+            print(f"[HOOK ERROR] ")
+            print(f"[HOOK ERROR] Falling back to GetAsyncKeyState (limited functionality)...")
+            print()
             
             # Fallback to old method - check MORE frequently when input is NOT blocked
             VK_CONTROL = 0x11
             VK_MENU = 0x12
             VK_M = 0x4D
+            VK_COMMA = 0xBC
+            VK_PERIOD = 0xBE
             check_counter = 0
             last_status_print = time.time()
             last_input_block_state = False
             fallback_info_printed = False  # Track if we've printed the fallback info
             
+            # Track key states to prevent repeated triggers
+            last_ctrl_down = False
+            last_comma_down = False
+            last_period_down = False
+            last_m_down = False
+            last_alt_down = False
+            
             while not emergency_stop:
                 # Print fallback info only once after config phase is complete
                 if config_phase_complete and not fallback_info_printed:
                     print("[FALLBACK] Using GetAsyncKeyState (won't work when input blocked)")
-                    print("[FALLBACK] Will check Ctrl+Alt+M every 50ms when input is NOT blocked")
-                    print("[FALLBACK] When input IS blocked, emergency stop won't work - unblock will happen after current action")
+                    print("[FALLBACK] Will check hotkeys every 50ms when input is NOT blocked")
+                    print("[FALLBACK] Supported hotkeys: Ctrl+Alt+M (stop), Ctrl+, (pause), Ctrl+. (resume)")
+                    print("[FALLBACK] When input IS blocked, hotkeys won't work - unblock will happen after current action")
                     print()
                     fallback_info_printed = True
                 
@@ -345,13 +432,18 @@ def emergency_stop_listener():
                     ctrl_state = ctypes.windll.user32.GetAsyncKeyState(VK_CONTROL)
                     alt_state = ctypes.windll.user32.GetAsyncKeyState(VK_MENU)
                     m_state = ctypes.windll.user32.GetAsyncKeyState(VK_M)
+                    comma_state = ctypes.windll.user32.GetAsyncKeyState(VK_COMMA)
+                    period_state = ctypes.windll.user32.GetAsyncKeyState(VK_PERIOD)
                     
-                    # Check for Ctrl+Alt+M
+                    # Check key states
                     ctrl_down = (ctrl_state & 0x8000) != 0
                     alt_down = (alt_state & 0x8000) != 0
                     m_down = (m_state & 0x8000) != 0
+                    comma_down = (comma_state & 0x8000) != 0
+                    period_down = (period_state & 0x8000) != 0
                     
-                    if ctrl_down and alt_down and m_down:
+                    # Check for Ctrl+Alt+M (emergency stop)
+                    if ctrl_down and alt_down and m_down and not (last_ctrl_down and last_alt_down and last_m_down):
                         print(f"\n[FALLBACK] Ctrl+Alt+M detected while input NOT blocked!")
                         print("\n" + "=" * 50)
                         print("🚨 EMERGENCY STOP ACTIVATED (Ctrl+Alt+M)! 🚨")
@@ -359,6 +451,67 @@ def emergency_stop_listener():
                         emergency_stop = True
                         print("[EMERGENCY] Program will stop after current action...")
                         break
+                    
+                    # Check for Ctrl+, (pause) - only trigger on new press
+                    if ctrl_down and comma_down and not script_paused and not (last_ctrl_down and last_comma_down):
+                        print(f"[FALLBACK DEBUG] ✓ Ctrl+, combination detected! Attempting to pause...")
+                        print(f"\n[HOTKEY] Ctrl+, detected - PAUSING SCRIPT")
+                        print("\n" + "=" * 50)
+                        print("⏸️  SCRIPT PAUSED (Ctrl+,)")
+                        print("=" * 50)
+                        script_paused = True
+                        print("[PAUSE] Script paused - press Ctrl+. to resume")
+                        
+                        # Send Discord notification
+                        if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
+                            def send_pause_notification():
+                                try:
+                                    embed = {
+                                        "title": "⏸️ Script Paused",
+                                        "description": "Fishing macro has been paused via Ctrl+, hotkey",
+                                        "color": 16776960,
+                                        "fields": [{"name": "📌 Status", "value": "Paused - Press Ctrl+. to resume", "inline": False}],
+                                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                    }
+                                    result = send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                                    print(f"[FALLBACK DEBUG] Pause notification sent: {result}")
+                                except Exception as e:
+                                    print(f"[FALLBACK DEBUG] Error sending pause notification: {e}")
+                            threading.Thread(target=send_pause_notification, daemon=True).start()
+                    
+                    # Check for Ctrl+. (resume) - only trigger on new press
+                    if ctrl_down and period_down and script_paused and not (last_ctrl_down and last_period_down):
+                        print(f"[FALLBACK DEBUG] ✓ Ctrl+. combination detected! Attempting to resume...")
+                        print(f"\n[HOTKEY] Ctrl+. detected - RESUMING SCRIPT")
+                        print("\n" + "=" * 50)
+                        print("▶️  SCRIPT RESUMED (Ctrl+.)")
+                        print("=" * 50)
+                        script_paused = False
+                        print("[RESUME] Script resumed - fishing continues")
+                        
+                        # Send Discord notification
+                        if ENABLE_DISCORD_NOTIFICATIONS and DISCORD_WEBHOOK_URL:
+                            def send_resume_notification():
+                                try:
+                                    embed = {
+                                        "title": "▶️ Script Resumed",
+                                        "description": "Fishing macro has been resumed via Ctrl+. hotkey",
+                                        "color": 5763719,
+                                        "fields": [{"name": "📌 Status", "value": "Active - Fishing continues", "inline": False}],
+                                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                    }
+                                    result = send_discord_notification(DISCORD_WEBHOOK_URL, "", embed)
+                                    print(f"[FALLBACK DEBUG] Resume notification sent: {result}")
+                                except Exception as e:
+                                    print(f"[FALLBACK DEBUG] Error sending resume notification: {e}")
+                            threading.Thread(target=send_resume_notification, daemon=True).start()
+                    
+                    # Update last key states
+                    last_ctrl_down = ctrl_down
+                    last_alt_down = alt_down
+                    last_m_down = m_down
+                    last_comma_down = comma_down
+                    last_period_down = period_down
                 
                 # Track when input blocking state changes
                 if input_currently_blocked != last_input_block_state:
@@ -381,7 +534,7 @@ def emergency_stop_listener():
             print()
             
             # Process messages to keep hook alive
-            msg = ctypes.wintypes.MSG()
+            msg = wintypes.MSG()
             check_counter = 0
             last_status_print = time.time()
             
@@ -660,7 +813,7 @@ class BackgroundWindowCapture:
             original_pos = win32api.GetCursorPos()
             
             # Move cursor to target position
-            win32api.SetCursorPos((screen_x, screen_y))
+            safe_set_cursor_pos((screen_x, screen_y))
             time.sleep(0.01)
             
             # Perform click using SendInput
@@ -679,7 +832,7 @@ class BackgroundWindowCapture:
             
             # Restore cursor position
             time.sleep(0.01)
-            win32api.SetCursorPos(original_pos)
+            safe_set_cursor_pos(original_pos)
             
             # Restore previous window if requested
             if return_previous_window and previous_hwnd:
@@ -847,11 +1000,11 @@ class FishingMacro:
         
         for img_key, conf in detector_configs:
             img_path = DETECTION_IMAGES.get(img_key)
-            if img_path:
+            if img_path:  # Only process if image path exists
                 detector = ImageDetector(img_path, confidence=conf, optional=True)
-            if detector.template is not None:
-                self.caught_detectors.append((img_path, detector))
-                print(f"[INFO] Loaded catch detector: {img_path} (confidence: {conf})")
+                if detector.template is not None:
+                    self.caught_detectors.append((img_path, detector))
+                    print(f"[INFO] Loaded catch detector: {img_path} (confidence: {conf})")
         
         self.has_caught_detector = len(self.caught_detectors) > 0
         if not self.has_caught_detector:
@@ -889,6 +1042,7 @@ class FishingMacro:
         self.last_catch_time = time.time()  # Track time of last catch for duration calculation
         self.auto_cast_count = 0  # Track number of auto-casts (no detection timeout)
         self.combat_detection_count = 0  # Track number of times combat was detected
+        self.consecutive_no_detection = 0  # Track consecutive auto-casts without detection (resets on catch)
     
     def _send_eating_notification(self):
         """Send Discord notification about eating completion (runs in background thread)"""
@@ -1252,7 +1406,16 @@ class FishingMacro:
     
     def eat_food(self):
         """Eat food - press 0, click 3 times, press 9, click once"""
-        global input_currently_blocked
+        global input_currently_blocked, emergency_stop, script_paused
+        
+        # Check if script is paused or stopped before starting
+        if script_paused:
+            print("[PAUSE] Skipping eating - script is paused")
+            return
+        
+        if emergency_stop:
+            print("[STOP] Skipping eating - emergency stop active")
+            return
         
         self.eat_count += 1
         print(f"[EATING] Time to eat! (Eat #{self.eat_count})")
@@ -1285,6 +1448,21 @@ class FishingMacro:
             
             # Click N times to eat with longer delays to ensure each food is consumed
             for i in range(self.eating_count):
+                # Check if script is paused or stopped during eating
+                if script_paused:
+                    print("[PAUSE] Script paused during eating - stopping immediately!")
+                    input_currently_blocked = False
+                    unblock_input()
+                    print("[INFO] User input unblocked after pause during eating")
+                    return
+                
+                if emergency_stop:
+                    print("[STOP] Emergency stop during eating - stopping immediately!")
+                    input_currently_blocked = False
+                    unblock_input()
+                    print("[INFO] User input unblocked after emergency stop during eating")
+                    return
+                
                 # Safety check: unblock if eating takes too long
                 eat_duration = time.time() - eat_input_block_start_time
                 if eat_duration > CRITICAL_SAFETY_TIMEOUT:
@@ -1778,6 +1956,9 @@ class FishingMacro:
                             self.catch_history.append((detector_name, max_val, time.time()))
                             self.last_catch_time = time.time()  # Update last catch time
                             
+                            # Reset consecutive no-detection counter on successful catch
+                            self.consecutive_no_detection = 0
+                            
                             print(f"[DETECTION THREAD] ✓ Found {img_name}! Confidence: {max_val:.2f}")
                             print(f"[DETECTION THREAD] Detection took {elapsed:.2f}s with {check_counter} checks")
                             print(f"[DETECTION THREAD] Last check: capture={capture_time*1000:.0f}ms, detection={detection_time*1000:.0f}ms")
@@ -1865,6 +2046,10 @@ class FishingMacro:
             print("[INFO] Combat detection thread started")
             print()
         
+        # Track last pause notification time
+        last_pause_screenshot_time = 0
+        pause_screenshot_interval = 60  # Send screenshot every 60 seconds while paused
+        
         while time.time() < self.end_time and not emergency_stop:
             # Check emergency stop at the very start of each iteration
             if emergency_stop:
@@ -1875,6 +2060,101 @@ class FishingMacro:
             if script_paused:
                 if self.debug:
                     print("[DEBUG] Script paused - waiting...")
+                
+                # Send periodic screenshot while paused
+                current_time = time.time()
+                if current_time - last_pause_screenshot_time >= pause_screenshot_interval:
+                    last_pause_screenshot_time = current_time
+                    
+                    # Capture screenshot
+                    screenshot = self.window_capture.capture_window()
+                    if screenshot is not None:
+                        # Send to Discord in background thread
+                        def send_pause_screenshot():
+                            try:
+                                # Save screenshot
+                                screenshot_saved = False
+                                screenshot_path = None
+                                
+                                if SAVE_DETECTION_SCREENSHOTS:
+                                    timestamp = time.strftime("%Y%m%d_%H%M%S")
+                                    screenshot_path = f"{SCREENSHOT_FOLDER}/paused_{timestamp}.png"
+                                    
+                                    try:
+                                        import os
+                                        os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                                        cv2.imwrite(screenshot_path, screenshot)
+                                        screenshot_saved = True
+                                        print(f"[PAUSE] 📸 Screenshot saved: {screenshot_path}")
+                                    except Exception as e:
+                                        print(f"[PAUSE] Failed to save screenshot: {e}")
+                                
+                                # Calculate pause duration
+                                pause_duration = current_time - self.macro_start_time
+                                pause_minutes = int(pause_duration // 60)
+                                pause_seconds = int(pause_duration % 60)
+                                
+                                # Send Discord notification
+                                if ENABLE_DISCORD_NOTIFICATIONS and self.webhook_url:
+                                    embed = {
+                                        "title": "⏸️ Script Still Paused - Status Update",
+                                        "description": "Periodic screenshot while fishing macro is paused",
+                                        "color": 16776960,  # Yellow
+                                        "fields": [
+                                            {
+                                                "name": "📌 Status",
+                                                "value": "Paused - Press Ctrl+. to resume",
+                                                "inline": True
+                                            },
+                                            {
+                                                "name": "⏱️ Session Duration",
+                                                "value": f"{pause_minutes}m {pause_seconds}s",
+                                                "inline": True
+                                            },
+                                            {
+                                                "name": "📊 Total Catches",
+                                                "value": f"{self.total_catches}",
+                                                "inline": True
+                                            },
+                                            {
+                                                "name": "🎯 Total Detections",
+                                                "value": f"{self.detection_count}",
+                                                "inline": True
+                                            },
+                                            {
+                                                "name": "🔄 Auto-Cast Count",
+                                                "value": f"{self.auto_cast_count}",
+                                                "inline": True
+                                            },
+                                            {
+                                                "name": "⚠️ Consecutive No-Detections",
+                                                "value": f"{self.consecutive_no_detection}/5",
+                                                "inline": True
+                                            }
+                                        ],
+                                        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                    }
+                                    
+                                    if screenshot_saved and screenshot_path:
+                                        send_discord_notification(self.webhook_url, "", embed, image_path=screenshot_path)
+                                        
+                                        # Delete screenshot after sending
+                                        if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                                            try:
+                                                if os.path.exists(screenshot_path):
+                                                    os.remove(screenshot_path)
+                                            except Exception as e:
+                                                print(f"[PAUSE] Failed to delete screenshot: {e}")
+                                    else:
+                                        send_discord_notification(self.webhook_url, "", embed)
+                                    
+                                    print(f"[PAUSE] 📤 Status update sent to Discord")
+                            
+                            except Exception as e:
+                                print(f"[PAUSE] Error sending pause screenshot: {e}")
+                        
+                        threading.Thread(target=send_pause_screenshot, daemon=True).start()
+                
                 time.sleep(1)
                 continue
             
@@ -1980,10 +2260,17 @@ class FishingMacro:
                     print("[CLICKING] Starting high-speed clicking with parallel background detection...")
                     
                     while True:
-                        # Check emergency stop before each click - CRITICAL for responsiveness
+                        # Check emergency stop OR pause before each click - CRITICAL for responsiveness
                         if emergency_stop:
                             print("[STOP] Emergency stop detected during clicking!")
                             print("[STOP] Breaking out of click loop immediately...")
+                            break
+                        
+                        # Check if script is paused - stop clicking immediately
+                        if script_paused:
+                            print("[PAUSE] Script paused during clicking - stopping clicks immediately!")
+                            print(f"[PAUSE] Completed {clicks_in_loop} clicks before pause")
+                            self.fish_just_caught = False  # Don't count as caught
                             break
                         
                         # Check if detection thread found caught visual
@@ -2028,9 +2315,14 @@ class FishingMacro:
                         self.click_count += 1
                         clicks_in_loop += 1
                         
-                        # Check emergency stop after click
+                        # Check emergency stop or pause after click
                         if emergency_stop:
                             print("[STOP] Emergency stop detected after click!")
+                            break
+                        
+                        if script_paused:
+                            print("[PAUSE] Script paused during clicking - stopping!")
+                            self.fish_just_caught = False  # Don't count as caught
                             break
                         
                         click_duration = time.time() - auto_clicker_start_time
@@ -2075,7 +2367,7 @@ class FishingMacro:
                             unblock_input()
                             print(f"[CRITICAL SAFETY] Input force-unblocked after {input_block_duration:.1f}s")
                             # Restore mouse and window
-                            win32api.SetCursorPos(original_mouse_pos)
+                            safe_set_cursor_pos(original_mouse_pos)
                             if previous_window:
                                 self.window_capture.restore_window(previous_window)
                             break
@@ -2089,44 +2381,53 @@ class FishingMacro:
                         detection_thread.join(timeout=2)
                         if self.debug:
                             print(f"[DEBUG] Detection thread stopped")
-                
-                    if self.debug:
-                        print("[DEBUG] Sending reset clicks...")
-                    time.sleep(4)
                     
-                    # Check if it's time to eat after catching a fish (good time to eat!)
-                    if self.fish_just_caught:
+                    # If script was paused during clicking, skip all post-click processing
+                    # Input will be unblocked in the finally block
+                    if not script_paused:
                         if self.debug:
-                            print("[DEBUG] Fish just caught - checking if it's time to eat...")
+                            print("[DEBUG] Sending reset clicks...")
+                        time.sleep(4)
                         
-                        if self.should_eat_now():
+                        # Check if it's time to eat after catching a fish (good time to eat!)
+                        if self.fish_just_caught:
                             if self.debug:
-                                print("[DEBUG] Time to eat after catching fish!")
-                            self.eat_food()
-                            # Skip reset clicks since eat_food already re-equips rod
+                                print("[DEBUG] Fish just caught - checking if it's time to eat...")
+                            
+                            if self.should_eat_now():
+                                if self.debug:
+                                    print("[DEBUG] Time to eat after catching fish!")
+                                self.eat_food()
+                                # Skip reset clicks since eat_food already re-equips rod
+                                self.fish_just_caught = False
+                                # Restore original mouse position before continuing
+                                safe_set_cursor_pos(original_mouse_pos)
+                                if self.debug:
+                                    print(f"[DEBUG] Restored original mouse position: {original_mouse_pos}")
+                                continue
+                            
                             self.fish_just_caught = False
-                            # Restore original mouse position before continuing
-                            win32api.SetCursorPos(original_mouse_pos)
-                            if self.debug:
-                                print(f"[DEBUG] Restored original mouse position: {original_mouse_pos}")
-                            continue
                         
-                        self.fish_just_caught = False
-                    
-                    # Normal reset clicks at center
-                    prev_win = self.window_capture.send_click(center_x, center_y, debug=self.debug)
-                    self.click_count += 1
-                    
-                    time.sleep(1)
-                    self.window_capture.send_click(center_x, center_y, debug=self.debug, return_previous_window=True)
-                    self.click_count += 1
-                    
-                    # Restore previous window after reset clicks
-                    if prev_win:
-                        time.sleep(0.2)
-                        self.window_capture.restore_window(prev_win)
-                        if self.debug:
-                            print("[DEBUG] Restored previous window after reset")
+                        # Normal reset clicks at center
+                        prev_win = self.window_capture.send_click(center_x, center_y, debug=self.debug)
+                        self.click_count += 1
+                        
+                        time.sleep(1)
+                        self.window_capture.send_click(center_x, center_y, debug=self.debug, return_previous_window=True)
+                        self.click_count += 1
+                        
+                        # Restore previous window after reset clicks
+                        if prev_win:
+                            time.sleep(0.2)
+                            self.window_capture.restore_window(prev_win)
+                            if self.debug:
+                                print("[DEBUG] Restored previous window after reset")
+                    else:
+                        print("[PAUSE] Skipping reset clicks and post-processing - script is paused")
+                        if previous_window:
+                            self.window_capture.restore_window(previous_window)
+                            if self.debug:
+                                print("[DEBUG] Restored previous window before pause")
                 
                 finally:
                     # STOP DETECTION THREAD if still running
@@ -2144,7 +2445,7 @@ class FishingMacro:
                     print("[INFO] User input unblocked - you can use your keyboard/mouse again")
                     
                     # Restore original mouse position after fishing sequence completes
-                    win32api.SetCursorPos(original_mouse_pos)
+                    safe_set_cursor_pos(original_mouse_pos)
                     if self.debug:
                         print(f"[DEBUG] Restored original mouse position: {original_mouse_pos}")
                     else:
@@ -2156,7 +2457,8 @@ class FishingMacro:
                 
                 if time_since_last_detection > self.no_detection_timeout:
                     self.auto_cast_count += 1
-                    print(f"[AUTO-CAST] No detection for {self.no_detection_timeout}s. Casting rod... (Auto-cast #{self.auto_cast_count})")
+                    self.consecutive_no_detection += 1  # Increment consecutive no-detection counter
+                    print(f"[AUTO-CAST] No detection for {self.no_detection_timeout}s. Casting rod... (Auto-cast #{self.auto_cast_count}, Consecutive: {self.consecutive_no_detection}/5)")
                     
                     # Capture screenshot for Discord notification
                     screenshot_saved = False
@@ -2189,17 +2491,17 @@ class FishingMacro:
                     
                     # Send Discord notification EVERY TIME auto-cast happens
                     if ENABLE_DISCORD_NOTIFICATIONS:
-                        # Check if this is a milestone (every 5th auto-cast)
-                        is_milestone = self.auto_cast_count % 5 == 0
+                        # Check if this triggers auto-pause (5 consecutive no-detections)
+                        is_milestone = self.consecutive_no_detection >= 5
                         
                         # Build mention string (only for milestones)
                         mention = ""
                         if is_milestone:
                             if DISCORD_MENTION_USER_ID:
                                 mention = f"<@{DISCORD_MENTION_USER_ID}>\n"
-                            print(f"[AUTO-CAST] 🚨 Milestone reached ({self.auto_cast_count}) - sending alert with mention")
+                            print(f"[AUTO-CAST] 🚨 ALERT: {self.consecutive_no_detection} consecutive no-detections - triggering auto-pause with mention")
                         else:
-                            print(f"[AUTO-CAST] Sending Discord notification (#{self.auto_cast_count})")
+                            print(f"[AUTO-CAST] Sending Discord notification (#{self.auto_cast_count}, consecutive: {self.consecutive_no_detection}/5)")
                         
                         # Calculate session duration
                         session_duration = time.time() - self.macro_start_time
@@ -2208,15 +2510,20 @@ class FishingMacro:
                         
                         # Different styling for milestones vs regular notifications
                         if is_milestone:
-                            # MILESTONE: Special alert with mention
+                            # MILESTONE: Special alert with mention (5 consecutive no-detections)
                             embed = {
-                                "title": "🚨 ⚠️ AUTO-CAST MILESTONE ALERT!",
-                                "description": f"**Auto-cast triggered {self.auto_cast_count} times!**\n\n⚠️ No fish bites detected for extended period - rod has been re-cast multiple times.\n\n**⏸️ SCRIPT AUTO-PAUSED FOR INVESTIGATION**\n\n**This may indicate:**\n• Wrong fishing location\n• Detection images need updating\n• Low confidence threshold\n• Game lag or issues\n\n**To resume:** Press **Ctrl+.** (period key)",
+                                "title": "🚨 ⚠️ CONSECUTIVE NO-DETECTION ALERT!",
+                                "description": f"**{self.consecutive_no_detection} consecutive auto-casts without catching anything!**\n\n⚠️ No fish caught in the last {self.consecutive_no_detection} casts - something may be wrong.\n\n**⏸️ SCRIPT AUTO-PAUSED FOR INVESTIGATION**\n\n**This may indicate:**\n• Wrong fishing location\n• Detection images need updating\n• Low confidence threshold\n• Game lag or issues\n• Character moved from fishing spot\n\n**To resume:** Press **Ctrl+.** (period key)",
                                 "color": 16711680,  # Red color for urgency
                             "fields": [
                                 {
-                                    "name": "🔄 Auto-Cast Count",
-                                    "value": f"**{self.auto_cast_count}** (Milestone!)",
+                                    "name": "⚠️ Consecutive No-Detections",
+                                    "value": f"**{self.consecutive_no_detection}** (Auto-pause triggered!)",
+                                    "inline": True
+                                },
+                                {
+                                    "name": "🔄 Total Auto-Cast Count",
+                                    "value": f"{self.auto_cast_count}",
                                     "inline": True
                                 },
                                 {
@@ -2230,7 +2537,7 @@ class FishingMacro:
                                     "inline": True
                                 },
                                 {
-                                    "name": "� Session Duration",
+                                    "name": "🕐 Session Duration",
                                     "value": f"{session_minutes}m {session_seconds}s",
                                     "inline": True
                                 },
@@ -2251,11 +2558,16 @@ class FishingMacro:
                             # REGULAR: Standard notification without mention
                             embed = {
                                 "title": "🎣 Auto-Cast Triggered",
-                                "description": f"No fish bite detected for {self.no_detection_timeout}s - automatically re-casting rod",
+                                "description": f"No fish bite detected for {self.no_detection_timeout}s - automatically re-casting rod\n\n⚠️ Consecutive no-detections: **{self.consecutive_no_detection}/5**",
                                 "color": 16744272,  # Orange color
                                 "fields": [
                                     {
-                                        "name": "🔄 Auto-Cast Count",
+                                        "name": "⚠️ Consecutive No-Detections",
+                                        "value": f"**{self.consecutive_no_detection}**/5",
+                                        "inline": True
+                                    },
+                                    {
+                                        "name": "🔄 Total Auto-Cast Count",
                                         "value": f"{self.auto_cast_count}",
                                         "inline": True
                                     },
@@ -2303,13 +2615,14 @@ class FishingMacro:
                             # Send without screenshot
                             send_discord_notification(self.webhook_url, mention, embed)
                         
-                        # PAUSE SCRIPT at milestones (every 5th auto-cast)
+                        # PAUSE SCRIPT when consecutive no-detections reach threshold (5)
                         if is_milestone:
                             script_paused = True
                             print("\n" + "=" * 70)
-                            print("⏸️  SCRIPT AUTO-PAUSED - AUTO-CAST MILESTONE REACHED!")
+                            print("⏸️  SCRIPT AUTO-PAUSED - CONSECUTIVE NO-DETECTION THRESHOLD!")
                             print("=" * 70)
-                            print(f"[AUTO-PAUSE] Auto-cast count reached {self.auto_cast_count}")
+                            print(f"[AUTO-PAUSE] {self.consecutive_no_detection} consecutive auto-casts without catching anything")
+                            print(f"[AUTO-PAUSE] Total auto-casts: {self.auto_cast_count}")
                             print(f"[AUTO-PAUSE] Script paused for investigation")
                             print(f"[AUTO-PAUSE] Press Ctrl+. (period) to RESUME fishing")
                             print("=" * 70 + "\n")
