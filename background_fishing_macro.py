@@ -110,6 +110,11 @@ try:
         COMBAT_AUTO_KILL_ROBLOX,
         COMBAT_INSTANT_KILL,
         COMBAT_KILL_DELAY,
+        ENABLE_MODERATOR_DETECTION,
+        MODERATOR_CONFIDENCE,
+        MENTION_ON_MODERATOR_DETECTED,
+        MODERATOR_AUTO_LEAVE,
+        MODERATOR_LEAVE_DELAY,
         RECORD_DETECTION_VIDEO,
         VIDEO_DURATION,
         VIDEO_FPS,
@@ -155,12 +160,18 @@ except ImportError:
         'junk': 'assets/images/detection/junk_arcane_odyssey.png',
         'caught': 'assets/images/detection/caught_arcane_odyssey.png',
         'combat': 'assets/images/detection/combat_arcane_odyssey.png',
+        'moderator': 'assets/images/detection/moderator_arcane_odyssey.png',
     }
     ENABLE_COMBAT_DETECTION = True
     COMBAT_CONFIDENCE = 0.70
     COMBAT_AUTO_KILL_ROBLOX = False
     COMBAT_INSTANT_KILL = False
     COMBAT_KILL_DELAY = 10
+    ENABLE_MODERATOR_DETECTION = True
+    MODERATOR_CONFIDENCE = 0.75
+    MENTION_ON_MODERATOR_DETECTED = True
+    MODERATOR_AUTO_LEAVE = False
+    MODERATOR_LEAVE_DELAY = 5
     RECORD_DETECTION_VIDEO = True
     VIDEO_DURATION = 5
     VIDEO_FPS = 15
@@ -903,6 +914,121 @@ class BackgroundWindowCapture:
             import traceback
             traceback.print_exc()
             return None
+    
+    def type_text(self, text, debug=False):
+        """Type text character by character
+        
+        Args:
+            text: String to type
+            debug: Whether to show debug output
+        """
+        try:
+            if debug:
+                print(f"[TYPE DEBUG] Typing text: {text}")
+            
+            # Bring window to front first
+            self.bring_to_front()
+            time.sleep(0.3)
+            
+            import ctypes
+            
+            for char in text:
+                # Get virtual key code for the character
+                vk_code = ctypes.windll.user32.VkKeyScanW(ord(char))
+                
+                # Extract key code and shift state
+                key_code = vk_code & 0xFF
+                shift_state = (vk_code >> 8) & 0xFF
+                
+                # Get scan code
+                scan_code = ctypes.windll.user32.MapVirtualKeyW(key_code, 0)
+                
+                # Press shift if needed
+                if shift_state & 1:
+                    ctypes.windll.user32.keybd_event(0x10, 0, 0, 0)  # VK_SHIFT down
+                    time.sleep(0.05)
+                
+                # Press character key
+                ctypes.windll.user32.keybd_event(key_code, scan_code, 0, 0)
+                time.sleep(0.05)
+                ctypes.windll.user32.keybd_event(key_code, scan_code, 2, 0)  # KEYEVENTF_KEYUP
+                
+                # Release shift if it was pressed
+                if shift_state & 1:
+                    time.sleep(0.05)
+                    ctypes.windll.user32.keybd_event(0x10, 0, 2, 0)  # VK_SHIFT up
+                
+                time.sleep(0.08)  # Small delay between characters
+                
+                if debug:
+                    print(f"[TYPE DEBUG] Typed character: {char}")
+            
+            if debug:
+                print(f"[TYPE DEBUG] Text typing completed")
+            
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to type text: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def jump_and_greet(self, debug=False):
+        """Jump once and type 'hi' in chat
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if debug:
+                print("[GREET DEBUG] Starting jump and greet sequence")
+            
+            # Bring window to front
+            self.bring_to_front()
+            time.sleep(0.3)
+            
+            import ctypes
+            
+            # Open chat with "/" key
+            print("[MODERATOR] Opening chat...")
+            slash_scan = ctypes.windll.user32.MapVirtualKeyW(0xBF, 0)  # VK_OEM_2 = "/" key
+            ctypes.windll.user32.keybd_event(0xBF, slash_scan, 0, 0)
+            time.sleep(0.1)
+            ctypes.windll.user32.keybd_event(0xBF, slash_scan, 2, 0)
+            time.sleep(0.3)
+            
+            # Type "hi"
+            print("[MODERATOR] Typing 'hi'...")
+            self.type_text("hi", debug=debug)
+            time.sleep(0.2)
+            
+            # Press Enter to send (VK_RETURN = 0x0D)
+            print("[MODERATOR] Sending message...")
+            enter_scan = ctypes.windll.user32.MapVirtualKeyW(0x0D, 0)
+            ctypes.windll.user32.keybd_event(0x0D, enter_scan, 0, 0)
+            time.sleep(0.1)
+            ctypes.windll.user32.keybd_event(0x0D, enter_scan, 2, 0)
+            time.sleep(0.3)
+            
+            # Jump (spacebar = VK_SPACE = 0x20)
+            print("[MODERATOR] Jumping...")
+            ctypes.windll.user32.keybd_event(0x20, spacebar_scan, 0, 0)
+            spacebar_scan = ctypes.windll.user32.MapVirtualKeyW(0x20, 0)
+            time.sleep(0.1)
+            ctypes.windll.user32.keybd_event(0x20, spacebar_scan, 2, 0)
+            time.sleep(0.5)
+            
+            
+            
+            print("[MODERATOR] ✅ Jump and greet sequence completed")
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to jump and greet: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 
 class ImageDetector:
@@ -987,6 +1113,20 @@ class FishingMacro:
                 print(f"[INFO] AUTO-KILL ENABLED - Roblox will be terminated {COMBAT_KILL_DELAY}s after combat detection!")
             else:
                 print("[INFO] Auto-kill disabled - you'll be notified but game won't close")
+        
+        # Moderator detection (optional)
+        moderator_image = DETECTION_IMAGES.get('moderator', 'assets/images/detection/moderator_arcane_odyssey.png')
+        self.moderator_detector = ImageDetector(moderator_image, confidence=MODERATOR_CONFIDENCE, optional=True) if moderator_image else None
+        self.has_moderator_detector = self.moderator_detector and self.moderator_detector.template is not None and ENABLE_MODERATOR_DETECTION
+        self.moderator_detected_time = None  # Track when moderator was first detected
+        self.moderator_notification_sent = False  # Track if we've sent the warning
+        self.stop_moderator_detection = threading.Event()  # Signal to stop moderator detection thread
+        
+        if self.has_moderator_detector:
+            print(f"[INFO] Moderator detection enabled - will alert via Discord (confidence: {MODERATOR_CONFIDENCE})")
+            if MODERATOR_AUTO_LEAVE:
+                print(f"[INFO] AUTO-LEAVE ENABLED - Roblox will be closed {MODERATOR_LEAVE_DELAY}s after moderator detection!")
+            print("[INFO] ⚠️ You will be @mentioned when a moderator is detected nearby!")
         
         # Load caught detection images from config
         self.caught_detectors = []
@@ -1659,6 +1799,11 @@ class FishingMacro:
                                                     "inline": True
                                                 },
                                                 {
+                                                    "name": "🎮 Response",
+                                                    "value": "Typed 'hi' in chat + jumped",
+                                                    "inline": True
+                                                },
+                                                {
                                                     "name": "⏱️ Action",
                                                     "value": f"{'⚡ INSTANT KILL' if (COMBAT_AUTO_KILL_ROBLOX and COMBAT_INSTANT_KILL) else ('AUTO-KILL in ' + str(COMBAT_KILL_DELAY) + 's' if COMBAT_AUTO_KILL_ROBLOX else 'Manual intervention required')}",
                                                     "inline": True
@@ -1694,6 +1839,48 @@ class FishingMacro:
                             # Set combat flag to pause fishing/eating
                             self.combat_active = True
                             print("[COMBAT DETECTION] ⚠️  Fishing and eating paused - combat mode active")
+                            
+                            # Interact with game to appear human (type hi, then jump)
+                            print()
+                            print("[COMBAT DETECTION] 🎮 Interacting with game to appear active...")
+                            try:
+                                # Open chat with "/" key
+                                print("[COMBAT DETECTION] Opening chat...")
+                                self.window_capture.bring_to_front()
+                                time.sleep(0.3)
+                                
+                                import ctypes
+                                slash_scan = ctypes.windll.user32.MapVirtualKeyW(0xBF, 0)  # VK_OEM_2 = "/" key
+                                ctypes.windll.user32.keybd_event(0xBF, slash_scan, 0, 0)
+                                time.sleep(0.1)
+                                ctypes.windll.user32.keybd_event(0xBF, slash_scan, 2, 0)
+                                time.sleep(0.3)
+                                
+                                # Type "hi"
+                                print("[COMBAT DETECTION] Typing 'hi'...")
+                                self.window_capture.type_text("hi")
+                                time.sleep(0.2)
+                                
+                                # Press Enter to send message
+                                print("[COMBAT DETECTION] Sending message...")
+                                enter_scan = ctypes.windll.user32.MapVirtualKeyW(0x0D, 0)
+                                ctypes.windll.user32.keybd_event(0x0D, enter_scan, 0, 0)
+                                time.sleep(0.1)
+                                ctypes.windll.user32.keybd_event(0x0D, enter_scan, 2, 0)
+                                time.sleep(0.3)
+                                
+                                # Jump (spacebar)
+                                print("[COMBAT DETECTION] Jumping...")
+                                spacebar_scan = ctypes.windll.user32.MapVirtualKeyW(0x20, 0)
+                                ctypes.windll.user32.keybd_event(0x20, spacebar_scan, 0, 0)
+                                time.sleep(0.1)
+                                ctypes.windll.user32.keybd_event(0x20, spacebar_scan, 2, 0)
+                                time.sleep(0.5)
+                                
+                                print("[COMBAT DETECTION] ✅ Interaction complete - starting random movement")
+                                print()
+                            except Exception as e:
+                                print(f"[COMBAT DETECTION] ⚠️ Failed to interact with game: {e}")
                             
                             # Start random movement thread to avoid suspicion
                             def random_movement_worker():
@@ -1887,6 +2074,286 @@ class FishingMacro:
             return combat_thread
         return None
     
+    def moderator_detection_worker(self):
+        """Background thread that continuously monitors for moderators
+        
+        This thread runs independently and checks for moderator_arcane_odyssey.png
+        If detected:
+        1. Send Discord notification with @mention and screenshot
+        2. Alert user that a moderator is nearby
+        """
+        global emergency_stop
+        
+        print("[MODERATOR DETECTION] Thread started - monitoring for moderators...")
+        
+        check_counter = 0
+        last_debug_print = time.time()
+        
+        while not self.stop_moderator_detection.is_set() and not emergency_stop:
+            try:
+                # Check emergency stop
+                if emergency_stop:
+                    break
+                
+                # Capture screenshot
+                screenshot = self.window_capture.capture_window()
+                
+                if screenshot is not None:
+                    check_counter += 1
+                    
+                    # Print status every 30 seconds (not as often as combat - less critical)
+                    if self.debug and time.time() - last_debug_print >= 30:
+                        print(f"[MODERATOR DETECTION] Checked {check_counter} times - no moderators detected")
+                        last_debug_print = time.time()
+                    
+                    # Check for moderator icon
+                    moderator_location = self.moderator_detector.find_in_image(screenshot)
+                    
+                    if moderator_location:
+                        confidence = moderator_location['confidence']
+                        
+                        # Only trigger if we haven't sent notification yet
+                        if not self.moderator_notification_sent:
+                            print("\n" + "=" * 60)
+                            print("🚨 ⚠️  MODERATOR DETECTED! ⚠️ 🚨")
+                            print("=" * 60)
+                            print(f"[MODERATOR] Moderator icon detected nearby! (Confidence: {confidence:.2f})")
+                            print(f"[MODERATOR] Location: x={moderator_location['x']}, y={moderator_location['y']}")
+                            print("[MODERATOR] A moderator may be checking for macro users!")
+                            print("[MODERATOR] ⚠️  RESPOND TO PROVE YOU'RE NOT AFK!")
+                            print("=" * 60)
+                            print()
+                            
+                            self.moderator_detected_time = time.time()
+                            self.moderator_notification_sent = True
+                            
+                            # Save screenshot
+                            screenshot_saved = False
+                            screenshot_path = None
+                            
+                            if SAVE_DETECTION_SCREENSHOTS:
+                                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                                screenshot_path = f"{SCREENSHOT_FOLDER}/moderator_detected_{timestamp}_conf{confidence:.2f}.png"
+                                
+                                try:
+                                    import os
+                                    os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                                    cv2.imwrite(screenshot_path, screenshot)
+                                    screenshot_saved = True
+                                    print(f"[MODERATOR] 📸 Screenshot saved: {screenshot_path}")
+                                except Exception as e:
+                                    print(f"[MODERATOR] Failed to save screenshot: {e}")
+                            
+                            # Send Discord notification with @mention
+                            if ENABLE_DISCORD_NOTIFICATIONS and self.webhook_url:
+                                def send_moderator_alert():
+                                    try:
+                                        # Build mention string
+                                        mention = ""
+                                        if MENTION_ON_MODERATOR_DETECTED and DISCORD_MENTION_USER_ID:
+                                            mention = f"<@{DISCORD_MENTION_USER_ID}> " * 3  # Mention 3 times
+                                        
+                                        embed = {
+                                            "title": "🚨 ⚠️ MODERATOR DETECTED NEARBY! ⚠️ 🚨",
+                                            "description": f"{mention}\n\n**A moderator icon has been detected in the game!**\n\nThey may be checking for AFK macro users. **RESPOND IMMEDIATELY** to prove you're active!",
+                                            "color": 16711680,  # Red color
+                                            "fields": [
+                                                {
+                                                    "name": "🔍 Detection Confidence",
+                                                    "value": f"{confidence:.2%}",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "📍 Location",
+                                                    "value": f"x={moderator_location['x']}, y={moderator_location['y']}",
+                                                    "inline": True
+                                                },
+                                                {
+                                                    "name": "⚠️ Action Required",
+                                                    "value": "**Respond to chat or move character NOW!**",
+                                                    "inline": False
+                                                },
+                                                {
+                                                    "name": "📊 Session Stats",
+                                                    "value": f"Catches: {self.total_catches} | Auto-casts: {self.auto_cast_count}",
+                                                    "inline": False
+                                                }
+                                            ],
+                                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                        }
+                                        
+                                        if screenshot_saved and screenshot_path:
+                                            send_discord_notification(self.webhook_url, mention, embed, image_path=screenshot_path)
+                                            
+                                            # Delete screenshot after sending
+                                            if DELETE_SCREENSHOTS_AFTER_DISCORD:
+                                                try:
+                                                    import os
+                                                    if os.path.exists(screenshot_path):
+                                                        os.remove(screenshot_path)
+                                                        print(f"[MODERATOR] 🗑️ Screenshot deleted after Discord upload")
+                                                except Exception as e:
+                                                    print(f"[MODERATOR] Failed to delete screenshot: {e}")
+                                        else:
+                                            send_discord_notification(self.webhook_url, mention, embed)
+                                        
+                                        print(f"[MODERATOR] 📤 Alert sent to Discord with @mention")
+                                    
+                                    except Exception as e:
+                                        print(f"[MODERATOR] Error sending Discord notification: {e}")
+                                
+                                # Send in background thread
+                                threading.Thread(target=send_moderator_alert, daemon=True).start()
+                            
+                            # Auto-leave functionality (if enabled and script not paused)
+                            if MODERATOR_AUTO_LEAVE and not script_paused:
+                                print(f"[MODERATOR] ⚠️  AUTO-LEAVE ENABLED - Waiting {MODERATOR_LEAVE_DELAY}s before closing Roblox...")
+                                print(f"[MODERATOR] Press Ctrl+Alt+M to cancel if you're at the computer!")
+                                
+                                # If delay is >= 5 seconds, interact with the game first (jump + say hi)
+                                if MODERATOR_LEAVE_DELAY >= 5:
+                                    print()
+                                    print("[MODERATOR] 🎮 Interacting with game to appear human...")
+                                    try:
+                                        # Take screenshot before interaction
+                                        print("[MODERATOR] 📸 Taking screenshot before interaction...")
+                                        screenshot = self.window_capture.capture()
+                                        if screenshot is not None and SAVE_DETECTION_SCREENSHOTS:
+                                            timestamp = time.strftime("%Y%m%d_%H%M%S")
+                                            screenshot_path = f"{SCREENSHOT_FOLDER}/moderator_pre_greet_{timestamp}.png"
+                                            try:
+                                                import os
+                                                os.makedirs(SCREENSHOT_FOLDER, exist_ok=True)
+                                                cv2.imwrite(screenshot_path, screenshot)
+                                                print(f"[MODERATOR] Screenshot saved: {screenshot_path}")
+                                            except Exception as e:
+                                                print(f"[MODERATOR] Failed to save screenshot: {e}")
+                                        
+                                        # Perform jump and greet
+                                        self.jump_and_greet()
+                                        print("[MODERATOR] ✅ Interaction complete - now waiting for leave delay...")
+                                        print()
+                                    except Exception as e:
+                                        print(f"[MODERATOR] ⚠️ Failed to interact with game: {e}")
+                                
+                                # Wait for the delay period
+                                time.sleep(MODERATOR_LEAVE_DELAY)
+                                
+                                # Check if still detected and script not paused
+                                moderator_check = self.moderator_detector.find_in_image(screenshot)
+                                if moderator_check and not script_paused and not emergency_stop:
+                                    print("\n" + "=" * 60)
+                                    print("🚨 AUTO-LEAVING GAME - MODERATOR STILL DETECTED! 🚨")
+                                    print("=" * 60)
+                                    print(f"[MODERATOR] Moderator still nearby after {MODERATOR_LEAVE_DELAY}s delay")
+                                    print("[MODERATOR] Closing Roblox to avoid detection...")
+                                    
+                                    try:
+                                        import psutil
+                                        import os
+                                        
+                                        # Find and kill Roblox processes
+                                        killed = False
+                                        for proc in psutil.process_iter(['name']):
+                                            if proc.info['name'] and 'roblox' in proc.info['name'].lower():
+                                                print(f"[MODERATOR] Terminating process: {proc.info['name']} (PID: {proc.pid})")
+                                                proc.kill()
+                                                killed = True
+                                        
+                                        if killed:
+                                            print("[MODERATOR] ✅ Roblox closed successfully - you've left the game")
+                                            
+                                            # Send Discord notification about auto-leave
+                                            if ENABLE_DISCORD_NOTIFICATIONS and self.webhook_url:
+                                                def send_leave_notification():
+                                                    try:
+                                                        mention = ""
+                                                        if MENTION_ON_MODERATOR_DETECTED and DISCORD_MENTION_USER_ID:
+                                                            mention = f"<@{DISCORD_MENTION_USER_ID}> "
+                                                        
+                                                        embed = {
+                                                            "title": "🚪 AUTO-LEAVE EXECUTED - Game Closed",
+                                                            "description": f"{mention}Roblox has been automatically closed due to moderator detection.",
+                                                            "color": 16711680,  # Red
+                                                            "fields": [
+                                                                {
+                                                                    "name": "⚠️ Reason",
+                                                                    "value": "Moderator detected and still nearby after delay",
+                                                                    "inline": False
+                                                                },
+                                                                {
+                                                                    "name": "⏱️ Delay Used",
+                                                                    "value": f"{MODERATOR_LEAVE_DELAY} seconds",
+                                                                    "inline": True
+                                                                },
+                                                                {
+                                                                    "name": "🎮 Interaction",
+                                                                    "value": "Jumped and said 'hi' before leaving" if MODERATOR_LEAVE_DELAY >= 5 else "No interaction (delay < 5s)",
+                                                                    "inline": True
+                                                                },
+                                                                {
+                                                                    "name": "📊 Session Stats",
+                                                                    "value": f"Catches: {self.total_catches} | Auto-casts: {self.auto_cast_count}",
+                                                                    "inline": False
+                                                                }
+                                                            ],
+                                                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+                                                        }
+                                                        send_discord_notification(self.webhook_url, mention, embed)
+                                                    except Exception as e:
+                                                        print(f"[MODERATOR] Error sending leave notification: {e}")
+                                                
+                                                threading.Thread(target=send_leave_notification, daemon=True).start()
+                                        else:
+                                            print("[MODERATOR] ⚠️ No Roblox process found to terminate")
+                                    
+                                    except Exception as e:
+                                        print(f"[MODERATOR] Error killing Roblox: {e}")
+                                        import traceback
+                                        traceback.print_exc()
+                                else:
+                                    if script_paused:
+                                        print(f"[MODERATOR] Auto-leave cancelled - script is paused")
+                                    elif emergency_stop:
+                                        print(f"[MODERATOR] Auto-leave cancelled - emergency stop activated")
+                                    else:
+                                        print(f"[MODERATOR] Moderator no longer detected - auto-leave cancelled")
+                        
+                        else:
+                            # Moderator still detected, but we already sent notification
+                            if self.debug and check_counter % 10 == 0:
+                                print(f"[MODERATOR] Still detecting moderator (notification already sent)")
+                    
+                    else:
+                        # No moderator detected - reset notification flag after some time
+                        if self.moderator_notification_sent:
+                            time_since_detection = time.time() - self.moderator_detected_time
+                            # Reset after 60 seconds of no detection
+                            if time_since_detection > 60:
+                                print("[MODERATOR] No moderator detected for 60s - resetting alert")
+                                self.moderator_notification_sent = False
+                                self.moderator_detected_time = None
+                
+                # Check every 3 seconds (moderators move around, check frequently but not spam)
+                time.sleep(3)
+                
+            except Exception as e:
+                if not self.stop_moderator_detection.is_set():
+                    print(f"[MODERATOR DETECTION ERROR] {e}")
+                    import traceback
+                    traceback.print_exc()
+                time.sleep(3)
+        
+        print("[MODERATOR DETECTION] Thread stopped")
+    
+    def start_moderator_detection(self):
+        """Start the moderator detection thread"""
+        if self.has_moderator_detector:
+            moderator_thread = threading.Thread(target=self.moderator_detection_worker, daemon=True)
+            moderator_thread.start()
+            return moderator_thread
+        return None
+    
     def detection_worker(self, point_detected_time=None):
         """Background thread that continuously checks for caught fish"""
         thread_start_time = time.time()
@@ -2046,9 +2513,16 @@ class FishingMacro:
             print("[INFO] Combat detection thread started")
             print()
         
+        # Start moderator detection thread
+        moderator_thread = self.start_moderator_detection()
+        if moderator_thread:
+            print("[INFO] Moderator detection thread started")
+            print()
+        
         # Track last pause notification time
         last_pause_screenshot_time = 0
         pause_screenshot_interval = 60  # Send screenshot every 60 seconds while paused
+        was_paused = False  # Track previous pause state to detect resume
         
         while time.time() < self.end_time and not emergency_stop:
             # Check emergency stop at the very start of each iteration
@@ -2056,8 +2530,18 @@ class FishingMacro:
                 print("[STOP] Emergency stop detected at start of loop, exiting...")
                 break
             
+            # Detect resume from pause (transition from paused to unpaused)
+            if was_paused and not script_paused:
+                print("[RESUME] Resetting consecutive no-detection counter and eating timer")
+                self.consecutive_no_detection = 0
+                self.last_eat_time = time.time()
+                print(f"[RESUME] ✅ Consecutive counter reset to 0")
+                print(f"[RESUME] ✅ Eating timer reset - next meal in {self.next_eat_interval}s")
+                was_paused = False
+            
             # Check if script is paused
             if script_paused:
+                was_paused = True  # Mark that we are/were paused
                 if self.debug:
                     print("[DEBUG] Script paused - waiting...")
                 
@@ -2659,6 +3143,12 @@ class FishingMacro:
         if combat_thread and combat_thread.is_alive():
             combat_thread.join(timeout=2)
             print("[CLEANUP] Combat detection thread stopped")
+        
+        # Stop moderator detection thread
+        self.stop_moderator_detection.set()
+        if moderator_thread and moderator_thread.is_alive():
+            moderator_thread.join(timeout=2)
+            print("[CLEANUP] Moderator detection thread stopped")
         
         # Ensure input is unblocked at the end
         if input_currently_blocked:

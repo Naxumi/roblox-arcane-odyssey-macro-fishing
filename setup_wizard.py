@@ -306,6 +306,71 @@ def setup_wizard():
     
     print()
     
+    # Moderator detection settings
+    print("-" * 60)
+    print("👮 MODERATOR DETECTION SETTINGS")
+    print("-" * 60)
+    print()
+    print("The macro can monitor for game moderators and alert you via Discord.")
+    print("This helps avoid being caught macro fishing by moderators.")
+    print()
+    print("How it works:")
+    print("1. Continuously monitors for moderator_arcane_odyssey.png icon")
+    print("2. If detected: Sends immediate Discord alert with @mention (3 times)")
+    print("3. Screenshot sent to show moderator presence")
+    print()
+    print("⚠️  IMPORTANT: You must take a screenshot of the moderator icon at YOUR resolution!")
+    print("Save it as: assets/images/detection/moderator_arcane_odyssey.png")
+    print()
+    
+    enable_moderator = input("Enable moderator detection? (y/n, default=y): ").strip().lower()
+    config_updates['ENABLE_MODERATOR_DETECTION'] = 'True' if enable_moderator != 'n' else 'False'
+    
+    if enable_moderator != 'n':
+        print("✅ Moderator detection enabled - you'll be @mentioned when moderators are nearby")
+        config_updates['MENTION_ON_MODERATOR_DETECTED'] = 'True'
+        
+        print()
+        print("⚠️  AUTO-LEAVE OPTION:")
+        print("If a moderator is detected and you don't respond,")
+        print("the macro can automatically close Roblox (leave the game).")
+        print("This only works when script is NOT paused.")
+        print()
+        print("💡 SMART INTERACTION: If delay >= 5 seconds, the macro will:")
+        print("   1. Jump once (spacebar)")
+        print("   2. Type '/hi' in chat and send it")
+        print("   3. Take a screenshot")
+        print("   4. Then close Roblox after the delay")
+        print("   This makes you appear active to the moderator!")
+        print()
+        auto_leave = input("Enable auto-leave when moderator detected? (y/n, default=n): ").strip().lower()
+        config_updates['MODERATOR_AUTO_LEAVE'] = 'True' if auto_leave == 'y' else 'False'
+        
+        if auto_leave == 'y':
+            print()
+            print("⏱️ LEAVE DELAY:")
+            print("How long to wait before automatically closing Roblox?")
+            print("This gives you time to respond if you're at the computer.")
+            print()
+            print("Recommended: 5-10 seconds")
+            try:
+                leave_delay = int(input("Enter delay in seconds (default=5): ") or "5")
+                if 1 <= leave_delay <= 60:
+                    config_updates['MODERATOR_LEAVE_DELAY'] = str(leave_delay)
+                    print(f"✅ Auto-leave enabled - Roblox will close {leave_delay}s after moderator detection")
+                else:
+                    print("⚠️  Invalid delay (must be 1-60) - using default (5 seconds)")
+                    config_updates['MODERATOR_LEAVE_DELAY'] = '5'
+            except ValueError:
+                print("⚠️  Invalid input - using default (5 seconds)")
+                config_updates['MODERATOR_LEAVE_DELAY'] = '5'
+        else:
+            print("ℹ️  Auto-leave disabled - you'll be notified but game won't close")
+    else:
+        print("ℹ️  Moderator detection disabled")
+    
+    print()
+    
     # Update config.py
     print("-" * 60)
     print("💾 SAVING CONFIGURATION")

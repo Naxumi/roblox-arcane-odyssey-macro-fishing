@@ -54,6 +54,7 @@ DETECTION_IMAGES = {
     'caught': 'assets/images/detection/caught_arcane_odyssey.png',
     'hunger': 'assets/images/detection/hunger.png',  # Optional - hunger bar
     'combat': 'assets/images/detection/combat_arcane_odyssey.png',  # Optional - combat indicator
+    'moderator': 'assets/images/detection/moderator_arcane_odyssey.png',  # Optional - moderator icon
 }
 
 
@@ -102,6 +103,15 @@ COMBAT_CONFIDENCE = 0.70  # Confidence threshold for combat detection (0.0-1.0)
 COMBAT_AUTO_KILL_ROBLOX = False  # Automatically kill Roblox process if combat detected
 COMBAT_INSTANT_KILL = False  # If True, kill immediately without delay (overrides COMBAT_KILL_DELAY)
 COMBAT_KILL_DELAY = 10  # Seconds to wait before killing Roblox (gives you time to respond, ignored if COMBAT_INSTANT_KILL=True)
+
+# Moderator detection settings
+ENABLE_MODERATOR_DETECTION = True  # Monitor for moderators and alert via Discord
+MODERATOR_CONFIDENCE = 0.75  # Confidence threshold for moderator detection (0.0-1.0)
+MENTION_ON_MODERATOR_DETECTED = True  # Mention you when moderator is detected
+MODERATOR_AUTO_LEAVE = False  # Automatically leave game (close Roblox) if moderator detected
+MODERATOR_LEAVE_DELAY = 5  # Seconds to wait before leaving (gives you time to respond if not AFK)
+# NOTE: If MODERATOR_LEAVE_DELAY >= 5, the macro will jump and type "hi" in chat before leaving
+# This makes you appear active/human to the moderator! Screenshots are also taken.
 
 
 # ============================================
